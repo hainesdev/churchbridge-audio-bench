@@ -68,7 +68,6 @@
 				C10000000000000000000307 /* docs */,
 				C10000000000000000000308 /* reports */,
 			);
-			path = ChurchBridgeAudioBench;
 			sourceTree = "<group>";
 		};
 		C10000000000000000000303 /* Products */ = {
