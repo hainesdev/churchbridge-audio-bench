@@ -7,7 +7,7 @@ from typing import Any
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _default_model() -> str:
@@ -157,8 +157,6 @@ class BenchmarkRunSpec:
             "run_duration_ms": self.run_duration_ms,
             "save_server_capture": self.save_server_capture,
             "server_capture_label": self.server_capture_label,
-            "controller_started_at": self.controller_started_at,
-            "stt_config": self.stt_config.public_payload(),
         }
 
 

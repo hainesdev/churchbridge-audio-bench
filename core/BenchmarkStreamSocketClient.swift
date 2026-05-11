@@ -83,11 +83,11 @@ actor BenchmarkStreamSocketClient {
 
     private func openSocket(isReconnect: Bool) async {
         guard let configuration, let runSpec else { return }
-        let requestURL = configuration.baseURL
-            .appending(path: "api")
-            .appending(path: "stream")
-            .appending(path: "v1")
-            .appending(queryItems: [URLQueryItem(name: "church_id", value: configuration.churchID)])
+        guard let requestURL = makeWebSocketURL(from: configuration.baseURL, churchID: configuration.churchID) else {
+            messageHandler?("Backend base URL could not be converted into a WebSocket endpoint.")
+            transition(to: .failed)
+            return
+        }
 
         sessionIDHandler?(nil)
         transition(to: isReconnect ? .reconnecting : .connecting)
@@ -118,6 +118,31 @@ actor BenchmarkStreamSocketClient {
                 failedTask: task
             )
         }
+    }
+
+    private func makeWebSocketURL(from baseURL: URL, churchID: String) -> URL? {
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+
+        switch components.scheme?.lowercased() {
+        case "http":
+            components.scheme = "ws"
+        case "https":
+            components.scheme = "wss"
+        case "ws", "wss":
+            break
+        default:
+            return nil
+        }
+
+        let existingPath = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let streamPath = [existingPath, "api", "stream", "v1"]
+            .filter { !$0.isEmpty }
+            .joined(separator: "/")
+        components.path = "/" + streamPath
+        components.queryItems = [URLQueryItem(name: "church_id", value: churchID)]
+        return components.url
     }
 
     private func listen(on task: URLSessionWebSocketTask) {

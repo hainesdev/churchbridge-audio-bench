@@ -10,7 +10,7 @@ from .models import BenchmarkRunResultMessage, BenchmarkRunSpec, DeviceHello, Te
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class BenchmarkControlServer:
@@ -50,6 +50,7 @@ class BenchmarkControlServer:
             expected_types={"device_hello"},
             timeout=timeout,
         )
+        print(f"<- device_hello {message}")
         return DeviceHello.from_payload(message)
 
     async def run_remote_benchmark(
@@ -58,24 +59,27 @@ class BenchmarkControlServer:
         run_spec: BenchmarkRunSpec,
         display_events_task: asyncio.Task[list[Any]],
     ) -> tuple[BenchmarkRunResultMessage, list[TelemetryEvent], list[Any]]:
-        await self._send_json({"type": "run_spec", **run_spec.controller_payload()})
+        run_spec_payload = {"type": "run_spec", **run_spec.controller_payload()}
+        print(f"-> run_spec {run_spec_payload}")
+        await self._send_json(run_spec_payload)
 
         handshake_message = await self._wait_for_message(
             expected_types={"ready", "run_rejected"},
             timeout=20.0,
             predicate=lambda payload: str(payload.get("run_id") or "") == run_spec.run_id,
         )
+        print(f"<- {handshake_message.get('type')} {handshake_message}")
         if handshake_message["type"] == "run_rejected":
             reason = str(handshake_message.get("reason") or "Run was rejected by the device.")
             raise RuntimeError(reason)
 
-        await self._send_json(
-            {
-                "type": "playback_started",
-                "run_id": run_spec.run_id,
-                "started_at": _utc_now_iso(),
-            }
-        )
+        playback_started_payload = {
+            "type": "playback_started",
+            "run_id": run_spec.run_id,
+            "started_at": _utc_now_iso(),
+        }
+        print(f"-> playback_started {playback_started_payload}")
+        await self._send_json(playback_started_payload)
 
         telemetry_events: list[TelemetryEvent] = []
         result_deadline = max(run_spec.run_duration_ms / 1000.0 + 20.0, 20.0)
@@ -90,13 +94,16 @@ class BenchmarkControlServer:
 
             message_type = str(payload.get("type") or "")
             if message_type == "telemetry":
+                print(f"<- telemetry {payload}")
                 telemetry_events.append(TelemetryEvent.from_payload(payload))
                 continue
             if message_type == "run_rejected":
+                print(f"<- run_rejected {payload}")
                 reason = str(payload.get("reason") or "Run was rejected by the device.")
                 raise RuntimeError(reason)
 
             run_result = BenchmarkRunResultMessage.from_payload(payload)
+            print(f"<- run_result {payload}")
             await self._send_json(
                 {
                     "type": "ack",
@@ -110,14 +117,19 @@ class BenchmarkControlServer:
     async def _handle_client(self, websocket: Any) -> None:
         self._active_websocket = websocket
         self._connected_event.set()
-        await self._send_json({"type": "hello", "protocol_version": 1})
+        hello_payload = {"type": "hello", "protocol_version": 1}
+        print(f"-> hello {hello_payload}")
+        await self._send_json(hello_payload)
         try:
             async for raw_message in websocket:
                 if isinstance(raw_message, bytes):
                     raw_message = raw_message.decode("utf-8")
                 payload = json.loads(raw_message)
                 if isinstance(payload, dict):
+                    print(f"<- message {payload}")
                     await self._incoming_queue.put(payload)
+        except Exception as exc:
+            print(f"Controller WebSocket disconnected: {exc}")
         finally:
             self._active_websocket = None
             self._connected_event.clear()
