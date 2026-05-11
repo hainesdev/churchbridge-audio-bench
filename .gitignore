@@ -1,0 +1,16 @@
+DerivedData/
+.build/
+.DS_Store
+*.xcuserstate
+*.moved-aside
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+xcuserdata/
+*.pyc
+__pycache__/
+.venv/
+env/
+reports/*
+!reports/.gitkeep
