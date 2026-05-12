@@ -29,10 +29,12 @@ It should also help us get more signal per deployment by running several candida
 
 Early scaffold now exists for:
 
-- benchmark-owned run and STT config models in [models.py](C:/Users/Dan/Desktop/Projects/macOS-ios-dev/shared/churchbridge-ios/ChurchBridgeAudioBench/controller/models.py)
-- benchmark-owned audio helpers in [audio_helpers.py](C:/Users/Dan/Desktop/Projects/macOS-ios-dev/shared/churchbridge-ios/ChurchBridgeAudioBench/controller/audio_helpers.py)
-- a display feed client in [display_feed_client.py](C:/Users/Dan/Desktop/Projects/macOS-ios-dev/shared/churchbridge-ios/ChurchBridgeAudioBench/controller/display_feed_client.py)
-- JSON report output in [report_writer.py](C:/Users/Dan/Desktop/Projects/macOS-ios-dev/shared/churchbridge-ios/ChurchBridgeAudioBench/controller/report_writer.py)
+- benchmark-owned run and STT config models in [models.py](C:/Users/Dan/Desktop/Projects/macOS-ios-dev/shared/ChurchBridgeAudioBench/controller/models.py)
+- benchmark-owned audio helpers in [audio_helpers.py](C:/Users/Dan/Desktop/Projects/macOS-ios-dev/shared/ChurchBridgeAudioBench/controller/audio_helpers.py)
+- a display feed client in [display_feed_client.py](C:/Users/Dan/Desktop/Projects/macOS-ios-dev/shared/ChurchBridgeAudioBench/controller/display_feed_client.py)
+- JSON report output in [report_writer.py](C:/Users/Dan/Desktop/Projects/macOS-ios-dev/shared/ChurchBridgeAudioBench/controller/report_writer.py)
+- scenario-manifest loading in [scenarios.py](C:/Users/Dan/Desktop/Projects/macOS-ios-dev/shared/ChurchBridgeAudioBench/controller/scenarios.py)
+- automated local playback scheduling in [audio_helpers.py](C:/Users/Dan/Desktop/Projects/macOS-ios-dev/shared/ChurchBridgeAudioBench/controller/audio_helpers.py)
 
 Primary server-side references:
 
@@ -47,3 +49,52 @@ Design rule:
 - prefer copying and rewriting the small chunks we need into this folder
 - avoid a hard runtime dependency on the entire existing server project unless it proves clearly worth it
 - optimize for field efficiency by comparing multiple variants per deploy when practical
+
+## Current Automated Flow
+
+Once the iPhone app is open and connected to the controller, the PC can now drive the benchmark end to end:
+
+1. send `RunSpec`
+2. wait for `ready`
+3. schedule local playback from a configured audio file
+4. notify the iPhone to start capture
+5. collect display events, telemetry, and the final run result
+6. write a per-run artifact bundle plus session summary
+
+Scenario manifests can define one or many audio clips. The controller will run each scenario across the requested pipeline list in order.
+
+Example:
+
+```powershell
+python -m controller.run_session `
+  --base-url http://192.168.0.202:8000 `
+  --church-id benchmark-lab `
+  --scenario-file .\scenarios\example-benchmark-session.json
+```
+
+If `--variants` is omitted, the controller now uses the default benchmark matrix:
+
+- `apple_aec_only`
+- `apple_aec_plus_current_cleanup`
+- `raw_debug`
+- `apple_aec_plus_deepfilternet3`
+
+## Long-Form Source Audio
+
+The controller can now play a timed window from inside a longer source file instead of requiring one file per short benchmark clip.
+
+Useful manifest fields:
+
+- `playback_start_seconds`
+- `playback_duration_seconds`
+
+This is especially helpful when the source material is a long sermon plus an SRT transcript.
+
+Generate a manifest from long audio + SRT pairs:
+
+```powershell
+python -m controller.generate_srt_scenarios `
+  --source-dir C:\Users\Dan\Desktop\Projects\churchbridge-ai\tests\audio\1 `
+  --source-dir C:\Users\Dan\Desktop\Projects\churchbridge-ai\tests\audio\2 `
+  --manifest-path .\scenarios\generated-srt-scenarios.json
+```

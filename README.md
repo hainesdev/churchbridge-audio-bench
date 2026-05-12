@@ -75,8 +75,33 @@ The primary benchmark is a live end-to-end acoustic test:
 
 - `ChurchBridgeAudioBench` now lives in its own standalone repository and Xcode project.
 - The project entry point is `ChurchBridgeAudioBench.xcodeproj`.
+- The benchmark app now supports controller-driven queued multi-variant sessions against the existing backend.
+- The benchmark app now defaults to the lab controller/backend endpoints at `ws://192.168.0.202:8765` and `http://192.168.0.202:8000`.
+- The benchmark app can auto-connect to the controller on launch and when the app returns to the foreground, which means the phone can be left open and driven remotely by the PC controller.
 - The benchmark app currently includes a minimal SwiftUI shell plus a benchmark-owned copy of the current audio capture manager.
 - The initial server strategy is to reuse the existing Church Bridge backend in [churchbridge-ai](C:/Users/Dan/Desktop/Projects/churchbridge-ai) rather than build a second ingest stack immediately.
+- The app-side stream startup race that could drop first-run server WAV capture has been fixed by waiting for backend `session_started` before beginning capture.
+- End-to-end live sessions are now producing backend WAV captures under `churchbridge-ai/tests/audio/captured/benchmarks/`.
+- The controller can now schedule local playback automatically from one or more scenario manifests, so one PC command can drive multiple room-audio clips across multiple iPhone pipeline variants.
+
+## Live Verification Snapshot
+
+Latest verified benchmark session:
+
+- `session-20260512T154520Z`
+
+Latest capture artifacts:
+
+- [run-01 apple_aec_only WAV](C:/Users/Dan/Desktop/Projects/churchbridge-ai/tests/audio/captured/benchmarks/session-20260512T154520Z/run-01-apple_aec_only_apple_aec_only_john3_16_room_a-apple_aec_only.wav)
+- [run-02 apple_aec_plus_current_cleanup WAV](C:/Users/Dan/Desktop/Projects/churchbridge-ai/tests/audio/captured/benchmarks/session-20260512T154520Z/run-02-apple_aec_plus_current_cleanup_apple_aec_plus_current_cleanup_john3_16_room_a-apple_aec_plus_current_cleanup.wav)
+- [run-03 raw_debug WAV](C:/Users/Dan/Desktop/Projects/churchbridge-ai/tests/audio/captured/benchmarks/session-20260512T154520Z/run-03-raw_debug_raw_debug_john3_16_room_a-raw_debug.wav)
+
+Current interpretation:
+
+- `apple_aec_only` is a usable stable baseline.
+- `raw_debug` is also producing healthy capture artifacts.
+- `apple_aec_plus_current_cleanup` remains unstable and currently behaves like an experimental path despite being labeled `conservative`.
+- All meaningful cleanup and final STT-ready conversion for benchmark variants is intended to happen on the iPhone client before backend ingest.
 
 ## Open In Xcode
 
@@ -95,6 +120,63 @@ Select scheme:
 
 The benchmark app no longer depends on `ChurchBridgeTranslation.xcodeproj`.
 
+## Automated Session Flow
+
+Goal state for normal benchmarking:
+
+1. Open the app on the iPhone.
+2. Leave `Auto-Connect On Launch` enabled.
+3. Let the phone reconnect itself to the controller.
+4. Start a benchmark session from the PC controller.
+
+At that point the controller can:
+
+- send each `RunSpec`
+- wait for the iPhone to report `ready`
+- start local room-audio playback on the PC
+- collect display-feed events and device telemetry
+- request backend WAV retention for each run
+
+No manual taps are required between runs once the app is open and connected.
+
+## Controller Automation
+
+Single-scenario automated playback example:
+
+```powershell
+python -m controller.run_session `
+  --base-url http://192.168.0.202:8000 `
+  --church-id benchmark-lab `
+  --scenario-id john3_16_room_a `
+  --expected-transcript "For God so loved the world" `
+  --audio-path C:\path\to\john3_16_room_a.wav
+```
+
+Multi-file scenario-manifest example:
+
+```powershell
+python -m controller.run_session `
+  --base-url http://192.168.0.202:8000 `
+  --church-id benchmark-lab `
+  --scenario-file .\scenarios\example-benchmark-session.json
+```
+
+Notes:
+
+- `--variants` is now optional; the default run matrix is `apple_aec_only`, `apple_aec_plus_current_cleanup`, `raw_debug`, and `apple_aec_plus_deepfilternet3`.
+- Scenario manifests can queue multiple local audio files, and each scenario will be run across the selected pipeline matrix in a stable order.
+- The controller uses local playback tools on this PC, so it can simulate a live room session while the iPhone remains untouched.
+- Scenario manifests can also reference a time window inside a longer source file by using `playback_start_seconds` and `playback_duration_seconds`.
+
+Generate windowed scenarios from long sermon recordings plus SRT files:
+
+```powershell
+python -m controller.generate_srt_scenarios `
+  --source-dir C:\Users\Dan\Desktop\Projects\churchbridge-ai\tests\audio\1 `
+  --source-dir C:\Users\Dan\Desktop\Projects\churchbridge-ai\tests\audio\2 `
+  --manifest-path .\scenarios\generated-srt-scenarios.json
+```
+
 ## Detailed Plan
 
 See [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md).
@@ -102,6 +184,7 @@ See [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md).
 Execution details:
 
 - [detailed-execution-plan.md](./docs/detailed-execution-plan.md)
+- [handoff-status-2026-05-12.md](./docs/handoff-status-2026-05-12.md)
 
 Server/backend reuse notes:
 

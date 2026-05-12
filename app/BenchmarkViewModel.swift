@@ -3,13 +3,56 @@ import Foundation
 @MainActor
 @Observable
 final class BenchmarkViewModel {
+    static let labControllerURLString = "ws://192.168.0.202:8765"
+    static let labBackendBaseURLString = "http://192.168.0.202:8000"
+    static let labChurchID = "benchmark-lab"
+
+    private enum DefaultsKey {
+        static let runMode = "BenchmarkViewModel.runMode"
+        static let controllerURLString = "BenchmarkViewModel.controllerURLString"
+        static let backendBaseURLString = "BenchmarkViewModel.backendBaseURLString"
+        static let churchID = "BenchmarkViewModel.churchID"
+        static let autoConnectToControllerOnLaunch = "BenchmarkViewModel.autoConnectToControllerOnLaunch"
+        static let lastRunSpec = "BenchmarkViewModel.lastRunSpec"
+    }
+
     let availablePipelines = BenchmarkPipelineID.allCases.map(\.profile)
-    var runMode: BenchmarkRunMode = .manual
-    var controllerURLString = "ws://192.168.1.2:8765"
-    var backendBaseURLString = "http://127.0.0.1:8000"
-    var churchID = "benchmark-lab"
+    var runMode: BenchmarkRunMode = .controllerWait {
+        didSet {
+            guard !isRestoringPersistedSettings else { return }
+            persistSettings()
+        }
+    }
+    var controllerURLString = BenchmarkViewModel.labControllerURLString {
+        didSet {
+            guard !isRestoringPersistedSettings else { return }
+            persistSettings()
+        }
+    }
+    var backendBaseURLString = BenchmarkViewModel.labBackendBaseURLString {
+        didSet {
+            guard !isRestoringPersistedSettings else { return }
+            persistSettings()
+        }
+    }
+    var churchID = BenchmarkViewModel.labChurchID {
+        didSet {
+            guard !isRestoringPersistedSettings else { return }
+            persistSettings()
+        }
+    }
+    var autoConnectToControllerOnLaunch = true {
+        didSet {
+            guard !isRestoringPersistedSettings else { return }
+            persistSettings()
+            if autoConnectToControllerOnLaunch {
+                ensureControllerConnection(resetLastError: false)
+            }
+        }
+    }
     var selectedPipeline: BenchmarkPipelineID = .appleAECOnly {
         didSet {
+            guard !isRestoringPersistedRunSpec else { return }
             activeRunSpec = Self.makeSampleRunSpec(for: selectedPipeline)
         }
     }
@@ -25,9 +68,14 @@ final class BenchmarkViewModel {
     private let captureManager = BenchmarkAudioCaptureManager()
     private let controlClient = BenchmarkControlClient()
     private let streamClient = BenchmarkStreamSocketClient()
+    private let defaults = UserDefaults.standard
     private var telemetrySendTask: Task<Void, Never>?
+    private var pendingTelemetrySnapshot: BenchmarkTelemetrySnapshot?
+    private var isRestoringPersistedRunSpec = false
+    private var isRestoringPersistedSettings = false
 
     init() {
+        restorePersistedSettings()
         captureManager.telemetryDidChange = { [weak self] telemetry in
             self?.handleTelemetryUpdate(telemetry)
         }
@@ -85,6 +133,17 @@ final class BenchmarkViewModel {
                 }
             )
         }
+        if let persistedRunSpec = loadPersistedRunSpec() {
+            isRestoringPersistedRunSpec = true
+            selectedPipeline = persistedRunSpec.pipelineID
+            activeRunSpec = persistedRunSpec
+            isRestoringPersistedRunSpec = false
+        } else {
+            activeRunSpec = Self.makeSampleRunSpec(for: selectedPipeline)
+        }
+        if autoConnectToControllerOnLaunch {
+            ensureControllerConnection(resetLastError: false)
+        }
     }
 
     var selectedPipelineProfile: BenchmarkPipelineProfile {
@@ -139,6 +198,8 @@ final class BenchmarkViewModel {
 
     func stopRun() {
         telemetrySendTask?.cancel()
+        telemetrySendTask = nil
+        pendingTelemetrySnapshot = nil
         captureManager.stop()
         Task {
             await streamClient.disconnect()
@@ -148,12 +209,42 @@ final class BenchmarkViewModel {
 
     func connectToController() {
         runMode = .controllerWait
-        controlClient.connect(to: controllerURLString)
+        reconnectToController()
     }
 
     func disconnectFromController() {
         controlClient.disconnect()
         runMode = .manual
+    }
+
+    func ensureControllerConnection(resetLastError: Bool = true) {
+        guard controllerStatus != .connected, controllerStatus != .connecting else { return }
+        if resetLastError {
+            lastError = nil
+        }
+        runMode = .controllerWait
+        controlClient.connect(to: controllerURLString)
+    }
+
+    func reconnectToController(resetLastError: Bool = true) {
+        if resetLastError {
+            lastError = nil
+        }
+        runMode = .controllerWait
+        controlClient.connect(to: controllerURLString)
+    }
+
+    func handleAppDidBecomeActive() {
+        guard autoConnectToControllerOnLaunch else { return }
+        ensureControllerConnection(resetLastError: false)
+    }
+
+    func restoreLabDefaults() {
+        controllerURLString = Self.labControllerURLString
+        backendBaseURLString = Self.labBackendBaseURLString
+        churchID = Self.labChurchID
+        autoConnectToControllerOnLaunch = true
+        reconnectToController()
     }
 
     private static func makeSampleRunSpec(for pipelineID: BenchmarkPipelineID) -> BenchmarkRunSpec {
@@ -191,19 +282,34 @@ final class BenchmarkViewModel {
 
     private func handleTelemetryUpdate(_ telemetry: BenchmarkTelemetrySnapshot) {
         self.telemetry = telemetry
-        guard controllerStatus == .connected, runState == .running, let activeRunSpec else { return }
+        guard controllerStatus == .connected, runState == .running, activeRunSpec != nil else { return }
 
-        telemetrySendTask?.cancel()
-        telemetrySendTask = Task { [controlClient] in
-            try? await Task.sleep(for: .milliseconds(150))
-            if Task.isCancelled {
-                return
+        pendingTelemetrySnapshot = telemetry
+        guard telemetrySendTask == nil else { return }
+
+        telemetrySendTask = Task { [weak self, controlClient] in
+            guard let self else { return }
+            defer {
+                self.telemetrySendTask = nil
             }
-            controlClient.sendTelemetry(runID: activeRunSpec.runID, snapshot: telemetry)
+
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(250))
+                guard !Task.isCancelled else { return }
+                guard self.controllerStatus == .connected, self.runState == .running else { return }
+                guard let activeRunID = self.activeRunSpec?.runID else { return }
+                guard let latestSnapshot = self.pendingTelemetrySnapshot else { return }
+                self.pendingTelemetrySnapshot = nil
+                controlClient.sendTelemetry(runID: activeRunID, snapshot: latestSnapshot)
+                if self.pendingTelemetrySnapshot == nil {
+                    return
+                }
+            }
         }
     }
 
     private func acceptController(runSpec: BenchmarkRunSpec) {
+        persistLastRunSpec(runSpec)
         selectedPipeline = runSpec.pipelineID
         activeRunSpec = runSpec
         lastError = nil
@@ -295,5 +401,47 @@ final class BenchmarkViewModel {
         Task { [streamClient] in
             _ = await streamClient.sendAudio(base64Float32: envelope.base64)
         }
+    }
+
+    private func restorePersistedSettings() {
+        isRestoringPersistedSettings = true
+        defer { isRestoringPersistedSettings = false }
+        if let rawRunMode = defaults.string(forKey: DefaultsKey.runMode),
+           let persistedRunMode = BenchmarkRunMode(rawValue: rawRunMode) {
+            runMode = persistedRunMode
+        }
+        controllerURLString = restoredString(forKey: DefaultsKey.controllerURLString, fallback: Self.labControllerURLString)
+        backendBaseURLString = restoredString(forKey: DefaultsKey.backendBaseURLString, fallback: Self.labBackendBaseURLString)
+        churchID = restoredString(forKey: DefaultsKey.churchID, fallback: Self.labChurchID)
+        if defaults.object(forKey: DefaultsKey.autoConnectToControllerOnLaunch) != nil {
+            autoConnectToControllerOnLaunch = defaults.bool(forKey: DefaultsKey.autoConnectToControllerOnLaunch)
+        } else {
+            autoConnectToControllerOnLaunch = true
+        }
+    }
+
+    private func loadPersistedRunSpec() -> BenchmarkRunSpec? {
+        guard let data = defaults.data(forKey: DefaultsKey.lastRunSpec) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(BenchmarkRunSpec.self, from: data)
+    }
+
+    private func persistLastRunSpec(_ runSpec: BenchmarkRunSpec) {
+        guard let data = try? JSONEncoder().encode(runSpec) else { return }
+        defaults.set(data, forKey: DefaultsKey.lastRunSpec)
+    }
+
+    private func persistSettings() {
+        defaults.set(runMode.rawValue, forKey: DefaultsKey.runMode)
+        defaults.set(controllerURLString, forKey: DefaultsKey.controllerURLString)
+        defaults.set(backendBaseURLString, forKey: DefaultsKey.backendBaseURLString)
+        defaults.set(churchID, forKey: DefaultsKey.churchID)
+        defaults.set(autoConnectToControllerOnLaunch, forKey: DefaultsKey.autoConnectToControllerOnLaunch)
+    }
+
+    private func restoredString(forKey key: String, fallback: String) -> String {
+        let restored = defaults.string(forKey: key)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return restored.isEmpty ? fallback : restored
     }
 }

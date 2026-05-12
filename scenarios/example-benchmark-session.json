@@ -1,0 +1,24 @@
+{
+  "scenarios": [
+    {
+      "scenario_id": "room_a_clip_01",
+      "expected_transcript": "For God so loved the world",
+      "audio_path": "C:/path/to/room-a-clip-01.wav",
+      "playback_start_seconds": 12.5,
+      "playback_duration_seconds": 8.5,
+      "playback_lead_in_seconds": 1.25,
+      "playback_tail_seconds": 1.0,
+      "notes": [
+        "Replace this placeholder path with a real local clip before running the automated matrix.",
+        "playback_start_seconds and playback_duration_seconds are optional. Omit both to play the full file."
+      ]
+    },
+    {
+      "scenario_id": "room_a_clip_02",
+      "expected_transcript": "He that hath the Son hath life",
+      "audio_path": "C:/path/to/room-a-clip-02.wav",
+      "playback_lead_in_seconds": 1.25,
+      "playback_tail_seconds": 1.0
+    }
+  ]
+}

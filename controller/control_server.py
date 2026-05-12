@@ -6,6 +6,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
 
+from .audio_helpers import AudioPlaybackResult, ScheduledAudioPlayback
 from .models import BenchmarkRunResultMessage, BenchmarkRunSpec, DeviceHello, TelemetryEvent
 
 
@@ -58,7 +59,8 @@ class BenchmarkControlServer:
         *,
         run_spec: BenchmarkRunSpec,
         display_events_task: asyncio.Task[list[Any]],
-    ) -> tuple[BenchmarkRunResultMessage, list[TelemetryEvent], list[Any]]:
+        playback_coordinator: Callable[[], Any] | None = None,
+    ) -> tuple[BenchmarkRunResultMessage, list[TelemetryEvent], list[Any], AudioPlaybackResult | None]:
         run_spec_payload = {"type": "run_spec", **run_spec.controller_payload()}
         print(f"-> run_spec {run_spec_payload}")
         await self._send_json(run_spec_payload)
@@ -73,11 +75,19 @@ class BenchmarkControlServer:
             reason = str(handshake_message.get("reason") or "Run was rejected by the device.")
             raise RuntimeError(reason)
 
+        scheduled_playback: ScheduledAudioPlayback | None = None
+        if playback_coordinator is not None:
+            scheduled_playback = await playback_coordinator()
+
         playback_started_payload = {
             "type": "playback_started",
             "run_id": run_spec.run_id,
-            "started_at": _utc_now_iso(),
+            "started_at": scheduled_playback.started_at if scheduled_playback else _utc_now_iso(),
         }
+        if scheduled_playback and scheduled_playback.playback_delay_ms > 0:
+            playback_started_payload["playback_delay_ms"] = scheduled_playback.playback_delay_ms
+        if scheduled_playback and scheduled_playback.expected_duration_seconds is not None:
+            playback_started_payload["expected_duration_seconds"] = scheduled_playback.expected_duration_seconds
         print(f"-> playback_started {playback_started_payload}")
         await self._send_json(playback_started_payload)
 
@@ -114,7 +124,10 @@ class BenchmarkControlServer:
                 }
             )
             display_events = await display_events_task
-            return run_result, telemetry_events, display_events
+            playback_result: AudioPlaybackResult | None = None
+            if scheduled_playback and scheduled_playback.completion_task is not None:
+                playback_result = await scheduled_playback.completion_task
+            return run_result, telemetry_events, display_events, playback_result
 
     async def _handle_client(self, websocket: Any) -> None:
         self._active_websocket = websocket

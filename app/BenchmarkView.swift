@@ -22,7 +22,7 @@ struct BenchmarkView: View {
                 }
 
                 Section("Controller") {
-                    TextField("ws://controller-host:8765", text: $viewModel.controllerURLString)
+                    TextField("ws://192.168.0.202:8765", text: $viewModel.controllerURLString)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .font(.footnote.monospaced())
@@ -39,7 +39,7 @@ struct BenchmarkView: View {
                 }
 
                 Section("Backend") {
-                    TextField("http://127.0.0.1:8000", text: $viewModel.backendBaseURLString)
+                    TextField("http://192.168.0.202:8000", text: $viewModel.backendBaseURLString)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .font(.footnote.monospaced())
@@ -50,6 +50,19 @@ struct BenchmarkView: View {
 
                     LabeledContent("Stream", value: viewModel.streamStatus.displayName)
                     LabeledContent("Backend Session", value: viewModel.backendSessionID.map(String.init) ?? "None")
+                }
+
+                Section("Automation") {
+                    Toggle("Auto-Connect On Launch", isOn: $viewModel.autoConnectToControllerOnLaunch)
+
+                    Button("Reconnect Now") {
+                        viewModel.reconnectToController()
+                    }
+                    .disabled(viewModel.controllerStatus == .connecting)
+
+                    Button("Restore Lab Defaults") {
+                        viewModel.restoreLabDefaults()
+                    }
                 }
 
                 Section("Current Spec") {

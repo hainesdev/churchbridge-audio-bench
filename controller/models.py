@@ -157,6 +157,7 @@ class BenchmarkRunSpec:
             "run_duration_ms": self.run_duration_ms,
             "save_server_capture": self.save_server_capture,
             "server_capture_label": self.server_capture_label,
+            "controller_started_at": self.controller_started_at,
         }
 
 
@@ -257,6 +258,7 @@ class BenchmarkRunArtifact:
     run_result: BenchmarkRunResultMessage | None = None
     telemetry_events: list[TelemetryEvent] = field(default_factory=list)
     display_events: list[DisplayEvent] = field(default_factory=list)
+    playback: dict[str, Any] | None = None
     server_capture_requested: bool = False
     server_capture_label: str | None = None
     notes: list[str] = field(default_factory=list)
@@ -269,6 +271,7 @@ class BenchmarkRunArtifact:
             "run_result": self.run_result.as_dict() if self.run_result else None,
             "telemetry_events": [event.as_dict() for event in self.telemetry_events],
             "display_events": [event.as_dict() for event in self.display_events],
+            "playback": dict(self.playback or {}) if self.playback else None,
             "server_capture_requested": self.server_capture_requested,
             "server_capture_label": self.server_capture_label,
             "notes": list(self.notes),

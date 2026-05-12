@@ -115,15 +115,36 @@ final class BenchmarkControlClient: NSObject {
     private var session: URLSession?
     private var webSocketTask: URLSessionWebSocketTask?
     private var isConnected = false
+    private var desiredURLString: String?
+    private var reconnectTask: Task<Void, Never>?
+    private var reconnectAttemptCount = 0
+    private var manualDisconnect = false
 
     func connect(to urlString: String) {
+        desiredURLString = urlString
+        manualDisconnect = false
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        openConnection(to: urlString)
+    }
+
+    func disconnect() {
+        manualDisconnect = true
+        desiredURLString = nil
+        reconnectAttemptCount = 0
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        teardownCurrentConnection(notifyDisconnected: true)
+    }
+
+    private func openConnection(to urlString: String) {
         guard let url = URL(string: urlString) else {
             errorHandler?("Controller URL is invalid.")
             statusDidChange?(.failed)
             return
         }
 
-        disconnect()
+        teardownCurrentConnection(notifyDisconnected: false)
         statusDidChange?(.connecting)
 
         let session = URLSession(configuration: .default, delegate: self, delegateQueue: OperationQueue())
@@ -131,20 +152,7 @@ final class BenchmarkControlClient: NSObject {
         self.session = session
         self.webSocketTask = task
         task.resume()
-        receiveNextMessage()
-    }
-
-    func disconnect() {
-        webSocketTask?.cancel(with: .goingAway, reason: nil)
-        webSocketTask = nil
-        session?.invalidateAndCancel()
-        session = nil
-        if isConnected {
-            isConnected = false
-            DispatchQueue.main.async {
-                self.statusDidChange?(.disconnected)
-            }
-        }
+        receiveNextMessage(for: task)
     }
 
     func sendReady(for runSpec: BenchmarkRunSpec) {
@@ -208,20 +216,51 @@ final class BenchmarkControlClient: NSObject {
         }
     }
 
-    private func receiveNextMessage() {
-        guard let webSocketTask else { return }
+    private func receiveNextMessage(for task: URLSessionWebSocketTask) {
+        guard webSocketTask === task else { return }
 
         Task {
             do {
-                let message = try await webSocketTask.receive()
+                let message = try await task.receive()
                 try await handle(message: message)
-                receiveNextMessage()
+                receiveNextMessage(for: task)
             } catch {
                 await MainActor.run {
+                    guard self.webSocketTask === task, !self.manualDisconnect else { return }
                     self.isConnected = false
                     self.statusDidChange?(.failed)
                     self.errorHandler?("Controller receive failed: \(error.localizedDescription)")
+                    self.scheduleReconnect()
                 }
+            }
+        }
+    }
+
+    private func teardownCurrentConnection(notifyDisconnected: Bool) {
+        webSocketTask?.cancel(with: .goingAway, reason: nil)
+        webSocketTask = nil
+        session?.invalidateAndCancel()
+        session = nil
+        if isConnected || notifyDisconnected {
+            isConnected = false
+            DispatchQueue.main.async {
+                self.statusDidChange?(.disconnected)
+            }
+        }
+    }
+
+    private func scheduleReconnect() {
+        guard !manualDisconnect, let desiredURLString else { return }
+        reconnectTask?.cancel()
+        let nextAttempt = reconnectAttemptCount + 1
+        reconnectAttemptCount = nextAttempt
+        let delaySeconds = min(pow(2.0, Double(max(nextAttempt - 1, 0))), 5.0)
+        reconnectTask = Task { [weak self, desiredURLString] in
+            try? await Task.sleep(for: .seconds(delaySeconds))
+            guard let strongSelf = self, !Task.isCancelled else { return }
+            await MainActor.run {
+                guard !strongSelf.manualDisconnect, strongSelf.desiredURLString == desiredURLString else { return }
+                strongSelf.openConnection(to: desiredURLString)
             }
         }
     }
@@ -274,16 +313,24 @@ final class BenchmarkControlClient: NSObject {
 
 extension BenchmarkControlClient: URLSessionWebSocketDelegate {
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
+        guard webSocketTask === self.webSocketTask else { return }
         isConnected = true
+        reconnectAttemptCount = 0
         DispatchQueue.main.async {
             self.statusDidChange?(.connected)
         }
     }
 
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
+        guard webSocketTask === self.webSocketTask else { return }
         isConnected = false
         DispatchQueue.main.async {
             self.statusDidChange?(.disconnected)
+        }
+        if !manualDisconnect {
+            DispatchQueue.main.async {
+                self.scheduleReconnect()
+            }
         }
     }
 }
