@@ -24,6 +24,7 @@ enum BenchmarkAudioProcessingStrategy: String, CaseIterable, Identifiable, Codab
     case robustVoiceFilter = "Robust Voice Filter"
     case persistentConverter = "Persistent Converter"
     case ephemeralConverter = "Ephemeral Converter"
+    case deepFilterNet3Streaming = "DeepFilterNet3 Streaming"
 
     var id: String { rawValue }
 
@@ -33,7 +34,7 @@ enum BenchmarkAudioProcessingStrategy: String, CaseIterable, Identifiable, Codab
         switch self {
         case .appleVoicePassthrough:
             return 48_000
-        case .robustVoiceFilter, .persistentConverter, .ephemeralConverter:
+        case .robustVoiceFilter, .persistentConverter, .ephemeralConverter, .deepFilterNet3Streaming:
             return 16_000
         }
     }
@@ -101,8 +102,8 @@ enum BenchmarkPipelineID: String, CaseIterable, Codable, Identifiable, Sendable 
                 id: self,
                 family: .experimental,
                 captureMode: .voiceProcessing,
-                processingStrategy: .robustVoiceFilter,
-                summary: "Experimental path reserved for DFN3 integration and client-finalized output."
+                processingStrategy: .deepFilterNet3Streaming,
+                summary: "Apple voice processing plus a streaming DeepFilterNet3 enhancement stage before final STT resampling."
             )
         }
     }

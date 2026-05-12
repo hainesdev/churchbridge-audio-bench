@@ -13,6 +13,12 @@ final class BenchmarkAudioCaptureManager: NSObject {
     private var hardwareInputFormat: AVAudioFormat?
     private var targetFormat: AVAudioFormat?
     private var converter: AVAudioConverter?
+    private let deepFilterNet3Processor: BenchmarkDeepFilterNet3Processor? = {
+        if #available(iOS 18.0, *) {
+            return BenchmarkDeepFilterNet3Processor()
+        }
+        return nil
+    }()
     private var telemetry = BenchmarkTelemetrySnapshot.placeholder
     private var pendingSamples: [Float] = []
     private var isRunning = false
@@ -61,6 +67,19 @@ final class BenchmarkAudioCaptureManager: NSObject {
         currentStrategy = strategy
         resetStageTelemetry()
         telemetry.captureStrategy = strategy.rawValue
+        telemetry.warnings = []
+        if strategy == .deepFilterNet3Streaming {
+            if #available(iOS 18.0, *) {
+                do {
+                    try await deepFilterNet3Processor?.prepare()
+                    deepFilterNet3Processor?.reset()
+                } catch {
+                    telemetry.warnings = ["DeepFilterNet3 model was unavailable: \(error.localizedDescription). The pipeline will fall back to unenhanced audio until the assets can be loaded or downloaded."]
+                }
+            } else {
+                telemetry.warnings = ["DeepFilterNet3 requires iOS 18 or newer."]
+            }
+        }
         try configureSession(for: effectiveMode)
         try configureEngine(for: effectiveMode, requestedMode: mode)
         engine.prepare()
@@ -91,6 +110,9 @@ final class BenchmarkAudioCaptureManager: NSObject {
         telemetry.clipping = false
         telemetry.pendingSampleCount = 0
         resetSignalConditioningState()
+        if #available(iOS 18.0, *) {
+            deepFilterNet3Processor?.reset()
+        }
         publishTelemetry()
 
         do {
@@ -195,7 +217,7 @@ final class BenchmarkAudioCaptureManager: NSObject {
         hardwareInputFormat = hardwareFormat
         self.targetFormat = targetFormat
         switch currentStrategy {
-        case .persistentConverter, .robustVoiceFilter:
+        case .persistentConverter, .robustVoiceFilter, .deepFilterNet3Streaming:
             converter = makeConverter(from: monoFormat, to: targetFormat)
         case .appleVoicePassthrough, .ephemeralConverter:
             converter = nil
@@ -249,18 +271,46 @@ final class BenchmarkAudioCaptureManager: NSObject {
         } else {
             guard
                 let hardwareInputFormat,
-                let sourceFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: hardwareInputFormat.sampleRate, channels: 1, interleaved: false),
-                let sourceBuffer = AVAudioPCMBuffer(pcmFormat: sourceFormat, frameCapacity: AVAudioFrameCount(samples.count))
+                let sourceFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: hardwareInputFormat.sampleRate, channels: 1, interleaved: false)
             else {
                 return
             }
 
-            sourceBuffer.frameLength = AVAudioFrameCount(samples.count)
+            let processedSourceSamples: [Float]
+            switch currentStrategy {
+            case .deepFilterNet3Streaming:
+                if #available(iOS 18.0, *) {
+                    let enhanced = deepFilterNet3Processor?.process(samples, sampleRate: Int(hardwareInputFormat.sampleRate))
+                    if let warning = deepFilterNet3Processor?.loadWarning, !warning.isEmpty {
+                        telemetry.warnings = [warning]
+                    }
+                    processedSourceSamples = enhanced ?? samples
+                } else {
+                    processedSourceSamples = samples
+                }
+            case .appleVoicePassthrough, .robustVoiceFilter, .persistentConverter, .ephemeralConverter:
+                processedSourceSamples = samples
+            }
+
+            guard let sourceBuffer = AVAudioPCMBuffer(
+                pcmFormat: sourceFormat,
+                frameCapacity: AVAudioFrameCount(processedSourceSamples.count)
+            ) else {
+                return
+            }
+            sourceBuffer.frameLength = AVAudioFrameCount(processedSourceSamples.count)
             guard let destination = sourceBuffer.floatChannelData?[0] else { return }
-            destination.update(from: samples, count: samples.count)
+            destination.update(from: processedSourceSamples, count: processedSourceSamples.count)
 
             guard let converted = convertBuffer(sourceBuffer, sourceFormat: sourceFormat) else { return }
-            outputSamples = currentStrategy == .robustVoiceFilter ? conditionSpeechForStreaming(converted) : converted
+            switch currentStrategy {
+            case .robustVoiceFilter:
+                outputSamples = conditionSpeechForStreaming(converted)
+            case .deepFilterNet3Streaming:
+                outputSamples = converted
+            case .appleVoicePassthrough, .persistentConverter, .ephemeralConverter:
+                outputSamples = converted
+            }
         }
 
         guard !outputSamples.isEmpty else { return }
@@ -351,6 +401,8 @@ final class BenchmarkAudioCaptureManager: NSObject {
             activeConverter = makeConverter(from: sourceFormat, to: targetFormat)
         case .robustVoiceFilter:
             activeConverter = converter
+        case .deepFilterNet3Streaming:
+            activeConverter = converter
         case .appleVoicePassthrough:
             activeConverter = nil
         }
@@ -364,7 +416,9 @@ final class BenchmarkAudioCaptureManager: NSObject {
             guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outputCapacity) else { return nil }
             let status = activeConverter.convert(to: outputBuffer, error: &conversionError) { _, outStatus in
                 if inputProvided {
-                    outStatus.pointee = self.currentStrategy == .persistentConverter ? .noDataNow : .endOfStream
+                    // Reused converters must stay open between tap buffers; ending the
+                    // stream here can strand reused enhancement paths after their first chunk.
+                    outStatus.pointee = (self.currentStrategy == .persistentConverter || self.currentStrategy == .robustVoiceFilter || self.currentStrategy == .deepFilterNet3Streaming) ? .noDataNow : .endOfStream
                     return nil
                 }
                 inputProvided = true
@@ -685,6 +739,7 @@ final class BenchmarkAudioCaptureManager: NSObject {
         telemetry.totalEmittedSamples = 0
         telemetry.lastChunkSampleRate = Int(telemetry.outputSampleRate.rounded())
         telemetry.lastChunkEncodedBytes = 0
+        telemetry.warnings = []
     }
 
     private func chunkSampleCount(for sampleRate: Double) -> Int {

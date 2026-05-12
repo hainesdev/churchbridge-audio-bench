@@ -18,6 +18,8 @@
 		C10000000000000000000109 /* BenchmarkStreamSocketClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000009 /* BenchmarkStreamSocketClient.swift */; };
 		C1000000000000000000010A /* BenchmarkTelemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1000000000000000000000A /* BenchmarkTelemetry.swift */; };
 		C1000000000000000000010B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C1000000000000000000000B /* Assets.xcassets */; };
+		C1000000000000000000010C /* BenchmarkDeepFilterNet3Processor.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000010 /* BenchmarkDeepFilterNet3Processor.swift */; };
+		C1000000000000000000010D /* DeepFilterNet3_Streaming.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000011 /* DeepFilterNet3_Streaming.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -36,6 +38,8 @@
 		C1000000000000000000000D /* ChurchBridgeAudioBench.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ChurchBridgeAudioBench.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C1000000000000000000000E /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		C1000000000000000000000F /* IMPLEMENTATION_PLAN.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = IMPLEMENTATION_PLAN.md; sourceTree = "<group>"; };
+		C10000000000000000000010 /* BenchmarkDeepFilterNet3Processor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchmarkDeepFilterNet3Processor.swift; sourceTree = "<group>"; };
+		C10000000000000000000011 /* DeepFilterNet3_Streaming.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepFilterNet3_Streaming.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -100,6 +104,8 @@
 				C10000000000000000000008 /* BenchmarkReportWriter.swift */,
 				C10000000000000000000009 /* BenchmarkStreamSocketClient.swift */,
 				C1000000000000000000000A /* BenchmarkTelemetry.swift */,
+				C10000000000000000000010 /* BenchmarkDeepFilterNet3Processor.swift */,
+				C10000000000000000000011 /* DeepFilterNet3_Streaming.swift */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -201,6 +207,8 @@
 				C10000000000000000000108 /* BenchmarkReportWriter.swift in Sources */,
 				C10000000000000000000109 /* BenchmarkStreamSocketClient.swift in Sources */,
 				C1000000000000000000010A /* BenchmarkTelemetry.swift in Sources */,
+				C1000000000000000000010C /* BenchmarkDeepFilterNet3Processor.swift in Sources */,
+				C1000000000000000000010D /* DeepFilterNet3_Streaming.swift in Sources */,
 				C10000000000000000000102 /* BenchmarkView.swift in Sources */,
 				C10000000000000000000103 /* BenchmarkViewModel.swift in Sources */,
 				C10000000000000000000101 /* ChurchBridgeAudioBenchApp.swift in Sources */,
