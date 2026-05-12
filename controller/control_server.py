@@ -93,6 +93,8 @@ class BenchmarkControlServer:
                 continue
 
             message_type = str(payload.get("type") or "")
+            if not message_type and "status" in payload and "pipeline_id" in payload and "run_id" in payload:
+                message_type = "run_result"
             if message_type == "telemetry":
                 print(f"<- telemetry {payload}")
                 telemetry_events.append(TelemetryEvent.from_payload(payload))
@@ -157,6 +159,10 @@ class BenchmarkControlServer:
 
                 payload = await asyncio.wait_for(self._incoming_queue.get(), timeout=remaining)
                 payload_type = str(payload.get("type") or "")
+                if not payload_type and "status" in payload and "pipeline_id" in payload and "run_id" in payload:
+                    payload_type = "run_result"
+                elif not payload_type and "snapshot" in payload and "run_id" in payload:
+                    payload_type = "telemetry"
                 if payload_type in expected_types and (predicate is None or predicate(payload)):
                     return payload
                 deferred.append(payload)

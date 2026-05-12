@@ -31,6 +31,8 @@
 	</dict>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>ChurchBridge Audio Bench needs the microphone to benchmark live room capture pipelines and compare speech-to-text performance.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

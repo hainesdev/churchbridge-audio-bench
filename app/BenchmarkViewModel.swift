@@ -278,7 +278,7 @@ final class BenchmarkViewModel {
         guard let baseURL = URL(string: backendBaseURLString) else {
             throw NSError(domain: "ChurchBridgeAudioBench", code: 30, userInfo: [NSLocalizedDescriptionKey: "Backend base URL is invalid."])
         }
-        await streamClient.connect(
+        try await streamClient.connect(
             configuration: .init(
                 baseURL: baseURL,
                 churchID: churchID,

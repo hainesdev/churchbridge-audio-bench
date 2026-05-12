@@ -33,6 +33,25 @@ actor BenchmarkStreamSocketClient {
     private var statusHandler: (@Sendable (BenchmarkStreamStatus) -> Void)?
     private var sessionIDHandler: (@Sendable (Int?) -> Void)?
     private let encoder = JSONEncoder()
+    private var connectionContinuation: CheckedContinuation<Void, Error>?
+    private var connectionTimeoutTask: Task<Void, Never>?
+
+    private enum StreamConnectionError: LocalizedError {
+        case invalidBaseURL
+        case timedOut
+        case failed(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .invalidBaseURL:
+                return "Backend base URL could not be converted into a WebSocket endpoint."
+            case .timedOut:
+                return "Timed out waiting for backend stream session to start."
+            case let .failed(message):
+                return message
+            }
+        }
+    }
 
     func setHandlers(
         statusHandler: @escaping @Sendable (BenchmarkStreamStatus) -> Void,
@@ -44,16 +63,18 @@ actor BenchmarkStreamSocketClient {
         self.sessionIDHandler = sessionIDHandler
     }
 
-    func connect(configuration: StreamConfiguration, runSpec: BenchmarkRunSpec) async {
+    func connect(configuration: StreamConfiguration, runSpec: BenchmarkRunSpec) async throws {
         self.configuration = configuration
         self.runSpec = runSpec
         retryTask?.cancel()
-        await openSocket(isReconnect: false)
+        try await openSocket(isReconnect: false)
+        try await awaitConnected(timeoutSeconds: 5)
     }
 
     func disconnect() async {
         retryTask?.cancel()
         retryTask = nil
+        failPendingConnection(with: .failed("Stream connection was cancelled."))
         sessionIDHandler?(nil)
         if let task {
             try? await sendEncodable(StreamStopPayload(), over: task)
@@ -81,12 +102,11 @@ actor BenchmarkStreamSocketClient {
         }
     }
 
-    private func openSocket(isReconnect: Bool) async {
+    private func openSocket(isReconnect: Bool) async throws {
         guard let configuration, let runSpec else { return }
         guard let requestURL = makeWebSocketURL(from: configuration.baseURL, churchID: configuration.churchID) else {
-            messageHandler?("Backend base URL could not be converted into a WebSocket endpoint.")
             transition(to: .failed)
-            return
+            throw StreamConnectionError.invalidBaseURL
         }
 
         sessionIDHandler?(nil)
@@ -94,6 +114,7 @@ actor BenchmarkStreamSocketClient {
         let task = URLSession.shared.webSocketTask(with: requestURL)
         self.task = task
         task.resume()
+        listen(on: task)
 
         do {
             let payload = StreamStartPayload(
@@ -111,12 +132,12 @@ actor BenchmarkStreamSocketClient {
                 )
             )
             try await sendEncodable(payload, over: task)
-            listen(on: task)
         } catch {
             await handleTransportFailure(
                 message: "Stream connection failed: \(error.localizedDescription)",
                 failedTask: task
             )
+            throw StreamConnectionError.failed("Stream connection failed: \(error.localizedDescription)")
         }
     }
 
@@ -179,11 +200,13 @@ actor BenchmarkStreamSocketClient {
            started.type == "session_started" {
             transition(to: .connected)
             sessionIDHandler?(started.sessionId)
+            completePendingConnection()
             return
         }
         if let error = try? JSONDecoder().decode(ErrorEvent.self, from: data),
            error.type == "error" {
             messageHandler?(error.message)
+            failPendingConnection(with: .failed(error.message))
         }
     }
 
@@ -193,7 +216,7 @@ actor BenchmarkStreamSocketClient {
         retryTask = Task {
             transition(to: .reconnecting)
             try? await Task.sleep(for: .seconds(2))
-            await openSocket(isReconnect: true)
+            try? await openSocket(isReconnect: true)
         }
     }
 
@@ -212,7 +235,38 @@ actor BenchmarkStreamSocketClient {
         failedTask.cancel(with: .goingAway, reason: nil)
         self.task = nil
         transition(to: .failed)
+        failPendingConnection(with: .failed(message))
         await scheduleReconnect()
+    }
+
+    private func awaitConnected(timeoutSeconds: Double) async throws {
+        if state == .connected {
+            return
+        }
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            connectionTimeoutTask?.cancel()
+            connectionTimeoutTask = nil
+            connectionContinuation?.resume(throwing: StreamConnectionError.failed("Superseded by a new connection attempt."))
+            connectionContinuation = continuation
+            connectionTimeoutTask = Task { [timeoutSeconds] in
+                try? await Task.sleep(for: .seconds(timeoutSeconds))
+                await self.failPendingConnection(with: .timedOut)
+            }
+        }
+    }
+
+    private func completePendingConnection() {
+        connectionTimeoutTask?.cancel()
+        connectionTimeoutTask = nil
+        connectionContinuation?.resume()
+        connectionContinuation = nil
+    }
+
+    private func failPendingConnection(with error: StreamConnectionError) {
+        connectionTimeoutTask?.cancel()
+        connectionTimeoutTask = nil
+        connectionContinuation?.resume(throwing: error)
+        connectionContinuation = nil
     }
 
     private func sendEncodable<T: Encodable>(_ payload: T, over task: URLSessionWebSocketTask) async throws {
