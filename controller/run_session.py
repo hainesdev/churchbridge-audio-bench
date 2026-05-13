@@ -17,11 +17,13 @@ from .models import (
 )
 from .report_writer import BenchmarkReportWriter
 from .scenarios import BenchmarkScenarioFixture, load_scenarios_from_manifests
+from .playback_degradations import build_degradation_spec
 
 DEFAULT_PIPELINE_VARIANTS = [
     "apple_aec_only",
     "apple_aec_plus_current_cleanup",
     "raw_debug",
+    "deepfilternet3_only",
     "apple_aec_plus_deepfilternet3",
 ]
 
@@ -80,27 +82,44 @@ def _build_prepared_runs(
 
 def _load_scenarios(args: argparse.Namespace, *, repo_root: Path) -> list[BenchmarkScenarioFixture]:
     if args.scenario_file:
-        return load_scenarios_from_manifests(args.scenario_file, repo_root=repo_root)
+        scenarios = load_scenarios_from_manifests(args.scenario_file, repo_root=repo_root)
+    else:
+        if not args.scenario_id or not args.expected_transcript:
+            raise ValueError("Either --scenario-file or both --scenario-id and --expected-transcript are required.")
 
-    if not args.scenario_id or not args.expected_transcript:
-        raise ValueError("Either --scenario-file or both --scenario-id and --expected-transcript are required.")
+        audio_path = None
+        if args.audio_path:
+            candidate = Path(args.audio_path).expanduser()
+            audio_path = candidate.resolve() if candidate.is_absolute() else (repo_root / candidate).resolve()
+            if not audio_path.exists():
+                raise FileNotFoundError(f"Audio file does not exist: {audio_path}")
 
-    audio_path = None
-    if args.audio_path:
-        candidate = Path(args.audio_path).expanduser()
-        audio_path = candidate.resolve() if candidate.is_absolute() else (repo_root / candidate).resolve()
-        if not audio_path.exists():
-            raise FileNotFoundError(f"Audio file does not exist: {audio_path}")
+        scenarios = [
+            BenchmarkScenarioFixture(
+                scenario_id=args.scenario_id,
+                expected_transcript=args.expected_transcript,
+                audio_path=audio_path,
+                playback_lead_in_seconds=max(args.playback_lead_in_seconds, 0.0),
+                playback_tail_seconds=max(args.playback_tail_seconds, 0.0),
+            )
+        ]
 
-    return [
-        BenchmarkScenarioFixture(
-            scenario_id=args.scenario_id,
-            expected_transcript=args.expected_transcript,
-            audio_path=audio_path,
-            playback_lead_in_seconds=max(args.playback_lead_in_seconds, 0.0),
-            playback_tail_seconds=max(args.playback_tail_seconds, 0.0),
-        )
-    ]
+    degradation_override = _build_degradation_override(args)
+    if degradation_override is not None:
+        scenarios = [scenario.with_degradation(degradation_override) for scenario in scenarios]
+    return scenarios
+
+
+def _build_degradation_override(args: argparse.Namespace):
+    if not args.degradation_condition:
+        return None
+    return build_degradation_spec(
+        args.degradation_condition,
+        echo_profile=args.echo_profile,
+        noise_type=args.noise_type,
+        snr_db=args.noise_snr_db,
+        seed=args.degradation_seed,
+    )
 
 
 async def _run_session(args: argparse.Namespace) -> None:
@@ -148,6 +167,7 @@ async def _run_session(args: argparse.Namespace) -> None:
                             playback_delay_seconds=scenario.playback_lead_in_seconds,
                             playback_start_seconds=scenario.playback_start_seconds,
                             playback_duration_seconds=scenario.playback_duration_seconds,
+                            degradation=scenario.degradation,
                         ))
                         if scenario.audio_path is not None
                         else None
@@ -172,7 +192,10 @@ async def _run_session(args: argparse.Namespace) -> None:
                         f" Window: start={scenario.playback_start_seconds:.3f}s"
                         f", duration={scenario.playback_duration_seconds if scenario.playback_duration_seconds is not None else 'full'}s."
                     )
-                notes.append(f"Local controller playback was scheduled from {scenario.audio_path}.{window_note}")
+                degradation_note = ""
+                if scenario.degradation is not None:
+                    degradation_note = f" Degradation: {scenario.degradation.metadata()}."
+                notes.append(f"Local controller playback was scheduled from {scenario.audio_path}.{window_note}{degradation_note}")
             notes.extend(scenario.notes)
             artifact = BenchmarkRunArtifact(
                 run_spec=run_spec,
@@ -198,9 +221,11 @@ async def _run_session(args: argparse.Namespace) -> None:
                     "server_capture_requested": run_spec.save_server_capture,
                     "server_capture_label": run_spec.server_capture_label,
                     "playback_audio_path": str(scenario.audio_path) if scenario.audio_path is not None else None,
+                    "playback_degradation": scenario.degradation.metadata() if scenario.degradation is not None else None,
                     "playback_start_seconds": scenario.playback_start_seconds,
                     "playback_duration_seconds": scenario.playback_duration_seconds,
                     "playback_player": playback_result.player if playback_result else None,
+                    "playback_rendered_audio_path": playback_result.audio_path if playback_result else None,
                     "artifact_path": str(artifact_path),
                 }
             )
@@ -239,7 +264,7 @@ def _parse_args() -> argparse.Namespace:
         default=DEFAULT_PIPELINE_VARIANTS,
         help=(
             "Ordered pipeline identifiers. Defaults to the standard benchmark matrix: "
-            "apple_aec_only apple_aec_plus_current_cleanup raw_debug apple_aec_plus_deepfilternet3"
+            "apple_aec_only apple_aec_plus_current_cleanup raw_debug deepfilternet3_only apple_aec_plus_deepfilternet3"
         ),
     )
     parser.add_argument("--run-seconds", type=float, default=5.0, help="Requested capture duration per run on the iPhone app")
@@ -262,6 +287,36 @@ def _parse_args() -> argparse.Namespace:
         type=float,
         default=1.0,
         help="Extra capture time to preserve after the audio file ends when duration is inferred from the media file.",
+    )
+    parser.add_argument(
+        "--degradation-condition",
+        choices=["clean", "echo", "noise", "echo_noise"],
+        default="",
+        help="Optional controller-side playback degradation to apply to every scenario in this session.",
+    )
+    parser.add_argument(
+        "--echo-profile",
+        choices=["light", "medium", "heavy"],
+        default="",
+        help="Echo profile for --degradation-condition echo or echo_noise.",
+    )
+    parser.add_argument(
+        "--noise-type",
+        choices=["white", "pink", "hvac", "crowd", "street", "babble"],
+        default="",
+        help="Background-noise type for --degradation-condition noise or echo_noise.",
+    )
+    parser.add_argument(
+        "--noise-snr-db",
+        type=float,
+        default=None,
+        help="Target signal-to-noise ratio in dB for --degradation-condition noise or echo_noise.",
+    )
+    parser.add_argument(
+        "--degradation-seed",
+        type=int,
+        default=7,
+        help="Random seed for controller-side playback degradation.",
     )
     parser.add_argument("--disable-server-capture", action="store_true", help="Do not request backend audio retention for this session")
     parser.add_argument(

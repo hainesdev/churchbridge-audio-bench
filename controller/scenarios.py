@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
 from .audio_helpers import probe_audio_duration_seconds
+from .playback_degradations import PlaybackDegradationSpec, parse_degradation_from_payload
 
 
 def _coerce_path(value: str, *, base_directory: Path, repo_root: Path) -> Path:
@@ -31,6 +32,7 @@ class BenchmarkScenarioFixture:
     playback_duration_seconds: float | None = None
     playback_lead_in_seconds: float = 1.25
     playback_tail_seconds: float = 1.0
+    degradation: PlaybackDegradationSpec | None = None
     notes: tuple[str, ...] = field(default_factory=tuple)
     manifest_path: Path | None = None
 
@@ -94,6 +96,7 @@ class BenchmarkScenarioFixture:
         notes = payload.get("notes") or []
         if isinstance(notes, str):
             notes = [notes]
+        degradation = parse_degradation_from_payload(payload)
 
         return cls(
             scenario_id=scenario_id,
@@ -109,9 +112,13 @@ class BenchmarkScenarioFixture:
             playback_duration_seconds=max(playback_duration_seconds, 0.0) if playback_duration_seconds is not None else None,
             playback_lead_in_seconds=max(playback_lead_in_seconds, 0.0),
             playback_tail_seconds=max(playback_tail_seconds, 0.0),
+            degradation=degradation,
             notes=tuple(str(note) for note in notes),
             manifest_path=manifest_path,
         )
+
+    def with_degradation(self, degradation: PlaybackDegradationSpec | None) -> "BenchmarkScenarioFixture":
+        return replace(self, degradation=degradation)
 
     def computed_run_seconds(self, *, minimum_seconds: float) -> float:
         seconds = max(float(self.run_seconds or 0), float(minimum_seconds))

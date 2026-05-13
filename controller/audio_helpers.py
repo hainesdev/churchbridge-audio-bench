@@ -12,6 +12,8 @@ from pathlib import Path
 
 import numpy as np
 
+from .playback_degradations import PlaybackDegradationSpec, prepare_playback_asset
+
 
 def base64_to_float32_bytes(base64_text: str) -> bytes:
     """Decode base64-encoded Float32 LE audio.
@@ -67,6 +69,7 @@ def _ffprobe_path() -> str | None:
 @dataclass
 class AudioPlaybackResult:
     audio_path: str
+    source_audio_path: str | None
     player: str
     started_at: str
     completed_at: str
@@ -74,6 +77,7 @@ class AudioPlaybackResult:
     playback_start_seconds: float
     playback_duration_seconds: float | None
     expected_duration_seconds: float | None
+    degradation: dict[str, object] | None
     return_code: int
 
     def as_dict(self) -> dict[str, object]:
@@ -83,12 +87,14 @@ class AudioPlaybackResult:
 @dataclass
 class ScheduledAudioPlayback:
     audio_path: str
+    source_audio_path: str | None
     player: str
     started_at: str
     playback_delay_ms: int
     playback_start_seconds: float
     playback_duration_seconds: float | None
     expected_duration_seconds: float | None
+    degradation: dict[str, object] | None
     completion_task: asyncio.Task[AudioPlaybackResult] | None = field(default=None, repr=False, compare=False)
 
 
@@ -138,6 +144,7 @@ async def schedule_audio_playback(
     playback_delay_seconds: float,
     playback_start_seconds: float = 0.0,
     playback_duration_seconds: float | None = None,
+    degradation: PlaybackDegradationSpec | None = None,
 ) -> ScheduledAudioPlayback:
     audio_path = Path(path).expanduser().resolve()
     if not audio_path.exists():
@@ -164,25 +171,49 @@ async def schedule_audio_playback(
         )
     else:
         expected_duration_seconds = available_duration_seconds if available_duration_seconds is not None else full_duration_seconds
+
+    prepared_audio_path = audio_path
+    prepared_playback_start_seconds = playback_start_seconds
+    prepared_playback_duration_seconds = playback_duration_seconds
+    degradation_metadata = degradation.metadata() if degradation is not None else None
+    if degradation is not None and degradation.is_active:
+        cache_root = Path(__file__).resolve().parents[1] / "reports" / "_prepared_playback"
+        prepared_asset = await asyncio.to_thread(
+            prepare_playback_asset,
+            audio_path,
+            cache_root=cache_root,
+            playback_start_seconds=playback_start_seconds,
+            playback_duration_seconds=playback_duration_seconds,
+            degradation=degradation,
+        )
+        prepared_audio_path = prepared_asset.prepared_path
+        prepared_playback_start_seconds = 0.0
+        prepared_playback_duration_seconds = None
+        expected_duration_seconds = prepared_asset.expected_duration_seconds
+
     player = "ffplay" if _ffplay_path() else ("winsound" if sys.platform.startswith("win") else "unavailable")
     planned_start = _utc_now() + timedelta(seconds=max(playback_delay_seconds, 0))
     task = asyncio.create_task(
         _play_audio_with_delay(
-            audio_path,
+            prepared_audio_path,
             playback_delay_seconds=max(playback_delay_seconds, 0),
-            playback_start_seconds=playback_start_seconds,
-            playback_duration_seconds=playback_duration_seconds,
+            playback_start_seconds=prepared_playback_start_seconds,
+            playback_duration_seconds=prepared_playback_duration_seconds,
             expected_duration_seconds=expected_duration_seconds,
+            source_audio_path=audio_path,
+            degradation=degradation_metadata,
         )
     )
     return ScheduledAudioPlayback(
-        audio_path=str(audio_path),
+        audio_path=str(prepared_audio_path),
+        source_audio_path=str(audio_path),
         player=player,
         started_at=planned_start.strftime("%Y-%m-%dT%H:%M:%SZ"),
         playback_delay_ms=int(round(max(playback_delay_seconds, 0) * 1_000)),
-        playback_start_seconds=playback_start_seconds,
-        playback_duration_seconds=playback_duration_seconds,
+        playback_start_seconds=prepared_playback_start_seconds,
+        playback_duration_seconds=prepared_playback_duration_seconds,
         expected_duration_seconds=expected_duration_seconds,
+        degradation=degradation_metadata,
         completion_task=task,
     )
 
@@ -194,6 +225,8 @@ async def _play_audio_with_delay(
     playback_start_seconds: float,
     playback_duration_seconds: float | None,
     expected_duration_seconds: float | None,
+    source_audio_path: Path | None = None,
+    degradation: dict[str, object] | None = None,
 ) -> AudioPlaybackResult:
     if playback_delay_seconds > 0:
         await asyncio.sleep(playback_delay_seconds)
@@ -205,6 +238,8 @@ async def _play_audio_with_delay(
         playback_start_seconds=playback_start_seconds,
         playback_duration_seconds=playback_duration_seconds,
         expected_duration_seconds=expected_duration_seconds,
+        source_audio_path=source_audio_path,
+        degradation=degradation,
     )
 
 
@@ -216,6 +251,8 @@ async def play_audio_file(
     playback_start_seconds: float = 0.0,
     playback_duration_seconds: float | None = None,
     expected_duration_seconds: float | None = None,
+    source_audio_path: str | Path | None = None,
+    degradation: dict[str, object] | None = None,
 ) -> AudioPlaybackResult:
     audio_path = Path(path).expanduser().resolve()
     if not audio_path.exists():
@@ -252,6 +289,7 @@ async def play_audio_file(
             raise RuntimeError(f"ffplay exited with status {return_code} for {audio_path}")
         return AudioPlaybackResult(
             audio_path=str(audio_path),
+            source_audio_path=str(Path(source_audio_path).expanduser().resolve()) if source_audio_path is not None else None,
             player="ffplay",
             started_at=started_at,
             completed_at=_utc_now_iso(),
@@ -259,6 +297,7 @@ async def play_audio_file(
             playback_start_seconds=playback_start_seconds,
             playback_duration_seconds=playback_duration_seconds,
             expected_duration_seconds=expected_duration_seconds,
+            degradation=degradation,
             return_code=return_code,
         )
 
@@ -270,6 +309,7 @@ async def play_audio_file(
         await asyncio.to_thread(winsound.PlaySound, str(audio_path), winsound.SND_FILENAME)
         return AudioPlaybackResult(
             audio_path=str(audio_path),
+            source_audio_path=str(Path(source_audio_path).expanduser().resolve()) if source_audio_path is not None else None,
             player="winsound",
             started_at=started_at,
             completed_at=_utc_now_iso(),
@@ -277,6 +317,7 @@ async def play_audio_file(
             playback_start_seconds=playback_start_seconds,
             playback_duration_seconds=playback_duration_seconds,
             expected_duration_seconds=expected_duration_seconds,
+            degradation=degradation,
             return_code=0,
         )
 

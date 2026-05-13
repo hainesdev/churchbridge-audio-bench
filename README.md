@@ -163,7 +163,7 @@ python -m controller.run_session `
 
 Notes:
 
-- `--variants` is now optional; the default run matrix is `apple_aec_only`, `apple_aec_plus_current_cleanup`, `raw_debug`, and `apple_aec_plus_deepfilternet3`.
+- `--variants` is now optional; the default run matrix is `apple_aec_only`, `apple_aec_plus_current_cleanup`, `raw_debug`, `deepfilternet3_only`, and `apple_aec_plus_deepfilternet3`.
 - Scenario manifests can queue multiple local audio files, and each scenario will be run across the selected pipeline matrix in a stable order.
 - The controller uses local playback tools on this PC, so it can simulate a live room session while the iPhone remains untouched.
 - Scenario manifests can also reference a time window inside a longer source file by using `playback_start_seconds` and `playback_duration_seconds`.

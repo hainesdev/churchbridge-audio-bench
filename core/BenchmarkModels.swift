@@ -54,6 +54,7 @@ enum BenchmarkPipelineID: String, CaseIterable, Codable, Identifiable, Sendable 
     case appleAECOnly = "apple_aec_only"
     case appleAECPlusCurrentCleanup = "apple_aec_plus_current_cleanup"
     case rawDebug = "raw_debug"
+    case deepFilterNet3Only = "deepfilternet3_only"
     case appleAECPlusDeepFilterNet3 = "apple_aec_plus_deepfilternet3"
 
     var id: String { rawValue }
@@ -66,6 +67,8 @@ enum BenchmarkPipelineID: String, CaseIterable, Codable, Identifiable, Sendable 
             return "Apple AEC + Current Cleanup"
         case .rawDebug:
             return "Raw Debug"
+        case .deepFilterNet3Only:
+            return "DeepFilterNet3 Only"
         case .appleAECPlusDeepFilterNet3:
             return "Apple AEC + DeepFilterNet3"
         }
@@ -96,6 +99,14 @@ enum BenchmarkPipelineID: String, CaseIterable, Codable, Identifiable, Sendable 
                 captureMode: .rawDebug,
                 processingStrategy: .ephemeralConverter,
                 summary: "Minimal diagnostic path used to expose raw or fallback behavior."
+            )
+        case .deepFilterNet3Only:
+            return BenchmarkPipelineProfile(
+                id: self,
+                family: .experimental,
+                captureMode: .rawDebug,
+                processingStrategy: .deepFilterNet3Streaming,
+                summary: "Raw benchmark capture plus a streaming DeepFilterNet3 enhancement stage before final STT resampling, with Apple voice processing disabled."
             )
         case .appleAECPlusDeepFilterNet3:
             return BenchmarkPipelineProfile(

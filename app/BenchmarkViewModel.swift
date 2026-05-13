@@ -155,6 +155,7 @@ final class BenchmarkViewModel {
             Self.makeSampleRunSpec(for: .appleAECOnly),
             Self.makeSampleRunSpec(for: .appleAECPlusCurrentCleanup),
             Self.makeSampleRunSpec(for: .rawDebug),
+            Self.makeSampleRunSpec(for: .deepFilterNet3Only),
             Self.makeSampleRunSpec(for: .appleAECPlusDeepFilterNet3),
         ]
     }
