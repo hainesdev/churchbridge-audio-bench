@@ -40,6 +40,130 @@ enum BenchmarkAudioProcessingStrategy: String, CaseIterable, Identifiable, Codab
     }
 }
 
+enum BenchmarkMicProfile: String, CaseIterable, Identifiable, Codable, Sendable {
+    case auto = "auto"
+    case frontCardioid = "front_cardioid"
+    case backCardioid = "back_cardioid"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .auto:
+            return "Auto Built-In Mic"
+        case .frontCardioid:
+            return "Front Cardioid"
+        case .backCardioid:
+            return "Back Cardioid"
+        }
+    }
+}
+
+enum BenchmarkDFN3TuningProfile: String, CaseIterable, Identifiable, Codable, Sendable {
+    case subtle = "subtle"
+    case balanced = "balanced"
+    case full = "full"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .subtle:
+            return "Subtle"
+        case .balanced:
+            return "Balanced"
+        case .full:
+            return "Full"
+        }
+    }
+}
+
+struct BenchmarkResolvedDFN3Tuning: Sendable {
+    let profile: BenchmarkDFN3TuningProfile
+    let wetMix: Float
+    let loudnessCompensation: Float
+    let maxCompensationGain: Float
+    let postGainDB: Float
+    let peakLimit: Float
+
+    var displayName: String { profile.displayName }
+
+    static let subtle = BenchmarkResolvedDFN3Tuning(
+        profile: .subtle,
+        wetMix: 0.35,
+        loudnessCompensation: 0.85,
+        maxCompensationGain: 2.5,
+        postGainDB: 0,
+        peakLimit: 0.98
+    )
+
+    static let balanced = BenchmarkResolvedDFN3Tuning(
+        profile: .balanced,
+        wetMix: 0.55,
+        loudnessCompensation: 0.7,
+        maxCompensationGain: 2.25,
+        postGainDB: 0.5,
+        peakLimit: 0.98
+    )
+
+    static let full = BenchmarkResolvedDFN3Tuning(
+        profile: .full,
+        wetMix: 1.0,
+        loudnessCompensation: 0,
+        maxCompensationGain: 1.0,
+        postGainDB: 0,
+        peakLimit: 0.98
+    )
+}
+
+struct BenchmarkDFN3TuningConfig: Codable, Sendable {
+    let profile: BenchmarkDFN3TuningProfile?
+    let wetMix: Float?
+    let loudnessCompensation: Float?
+    let maxCompensationGain: Float?
+    let postGainDB: Float?
+    let peakLimit: Float?
+
+    enum CodingKeys: String, CodingKey {
+        case profile
+        case wetMix = "wet_mix"
+        case loudnessCompensation = "loudness_compensation"
+        case maxCompensationGain = "max_compensation_gain"
+        case postGainDB = "post_gain_db"
+        case peakLimit = "peak_limit"
+    }
+
+    var resolved: BenchmarkResolvedDFN3Tuning {
+        let base: BenchmarkResolvedDFN3Tuning
+        switch profile ?? .subtle {
+        case .subtle:
+            base = .subtle
+        case .balanced:
+            base = .balanced
+        case .full:
+            base = .full
+        }
+
+        return BenchmarkResolvedDFN3Tuning(
+            profile: profile ?? base.profile,
+            wetMix: min(max(wetMix ?? base.wetMix, 0), 1),
+            loudnessCompensation: min(max(loudnessCompensation ?? base.loudnessCompensation, 0), 1),
+            maxCompensationGain: max(maxCompensationGain ?? base.maxCompensationGain, 1),
+            postGainDB: postGainDB ?? base.postGainDB,
+            peakLimit: min(max(peakLimit ?? base.peakLimit, 0.5), 1)
+        )
+    }
+
+    static let subtle = BenchmarkDFN3TuningConfig(
+        profile: .subtle,
+        wetMix: nil,
+        loudnessCompensation: nil,
+        maxCompensationGain: nil,
+        postGainDB: nil,
+        peakLimit: nil
+    )
+}
+
 struct BenchmarkPipelineProfile: Sendable, Identifiable {
     let id: BenchmarkPipelineID
     let family: BenchmarkPipelineFamily
@@ -188,6 +312,8 @@ struct BenchmarkRunSpec: Codable, Sendable, Identifiable {
     let saveServerCapture: Bool
     let serverCaptureLabel: String?
     let controllerStartedAt: Date?
+    let micProfile: BenchmarkMicProfile?
+    let dfn3Tuning: BenchmarkDFN3TuningConfig?
 
     var id: String { runID }
 
@@ -203,6 +329,8 @@ struct BenchmarkRunSpec: Codable, Sendable, Identifiable {
         case saveServerCapture = "save_server_capture"
         case serverCaptureLabel = "server_capture_label"
         case controllerStartedAt = "controller_started_at"
+        case micProfile = "mic_profile"
+        case dfn3Tuning = "dfn3_tuning"
     }
 
     var captureMode: BenchmarkCaptureMode {
@@ -211,6 +339,14 @@ struct BenchmarkRunSpec: Codable, Sendable, Identifiable {
 
     var processingStrategy: BenchmarkAudioProcessingStrategy {
         pipelineID.profile.processingStrategy
+    }
+
+    var effectiveMicProfile: BenchmarkMicProfile {
+        micProfile ?? .auto
+    }
+
+    var effectiveDFN3Tuning: BenchmarkResolvedDFN3Tuning {
+        dfn3Tuning?.resolved ?? .subtle
     }
 
     static let sample = BenchmarkRunSpec(
@@ -224,7 +360,9 @@ struct BenchmarkRunSpec: Codable, Sendable, Identifiable {
         runDurationMilliseconds: 5_000,
         saveServerCapture: true,
         serverCaptureLabel: "sample-scenario-apple-aec-only",
-        controllerStartedAt: nil
+        controllerStartedAt: nil,
+        micProfile: nil,
+        dfn3Tuning: nil
     )
 }
 

@@ -77,7 +77,45 @@ If `--variants` is omitted, the controller now uses the default benchmark matrix
 - `apple_aec_only`
 - `apple_aec_plus_current_cleanup`
 - `raw_debug`
+- `deepfilternet3_only`
 - `apple_aec_plus_deepfilternet3`
+
+The controller can also sweep mic steering and DFN3 tuning without changing app code between runs:
+
+```powershell
+python -m controller.run_session `
+  --base-url http://192.168.0.202:8000 `
+  --church-id benchmark-lab `
+  --scenario-file .\scenarios\generated-srt-scenarios.json `
+  --variants apple_aec_only apple_aec_plus_deepfilternet3 `
+  --mic-profiles auto front_cardioid back_cardioid `
+  --dfn3-profiles subtle balanced
+```
+
+Important controller-side additions:
+
+- `--mic-profiles` sweeps built-in mic-array steering profiles across the selected pipelines.
+- `--dfn3-profiles` sweeps named DFN3 tuning presets across DFN3-backed pipelines only.
+- `--dfn3-wet-mix`, `--dfn3-loudness-compensation`, `--dfn3-max-compensation-gain`, `--dfn3-post-gain-db`, and `--dfn3-peak-limit` let one session override the DFN3 preset numerically.
+- Session summaries now include controller-derived final transcript, first partial/final latency, WER, CER, transcript similarity, selected mic data source, selected polar pattern, and max capture restarts per run.
+
+## Physical Room Noise
+
+When you want room noise from a real source like a box fan, leave controller-side degradation disabled and let the controller play speech only.
+
+Recommended command pattern:
+
+```powershell
+python -m controller.run_session `
+  --base-url http://192.168.0.202:8000 `
+  --church-id benchmark-lab `
+  --scenario-file .\scenarios\generated-srt-scenarios.json `
+  --environment-label box_fan_medium `
+  --environment-note "PC speakers provide speech playback only." `
+  --environment-note "Box fan on medium, fixed position for whole session."
+```
+
+The session summary and each run artifact will record that environment metadata so later analysis can distinguish physical-noise runs from synthetic-noise runs.
 
 ## Long-Form Source Audio
 

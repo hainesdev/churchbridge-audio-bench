@@ -73,6 +73,8 @@ struct BenchmarkView: View {
                     LabeledContent("Run Duration", value: durationText(viewModel.activeRunSpec?.runDurationMilliseconds))
                     LabeledContent("Server Capture", value: serverCaptureText(for: viewModel.activeRunSpec))
                     LabeledContent("Capture Label", value: viewModel.activeRunSpec?.serverCaptureLabel ?? "None")
+                    LabeledContent("Mic Profile", value: viewModel.activeRunSpec?.effectiveMicProfile.displayName ?? "Not loaded")
+                    LabeledContent("DFN3", value: viewModel.activeRunSpec?.dfn3Tuning?.resolved.displayName ?? "Default")
                 }
 
                 Section("Controls") {
@@ -113,6 +115,13 @@ struct BenchmarkView: View {
 
                 Section("Diagnostics") {
                     LabeledContent("Route", value: viewModel.telemetry.routeName)
+                    LabeledContent("Mic Profile", value: viewModel.telemetry.appliedMicProfile)
+                    LabeledContent("Input Port", value: viewModel.telemetry.selectedInputPort.isEmpty ? "Unknown" : viewModel.telemetry.selectedInputPort)
+                    LabeledContent("Data Source", value: viewModel.telemetry.selectedDataSource.isEmpty ? "Unknown" : viewModel.telemetry.selectedDataSource)
+                    LabeledContent("Orientation", value: viewModel.telemetry.selectedDataSourceOrientation.isEmpty ? "Unknown" : viewModel.telemetry.selectedDataSourceOrientation)
+                    LabeledContent("Polar Pattern", value: viewModel.telemetry.selectedPolarPattern.isEmpty ? "Unknown" : viewModel.telemetry.selectedPolarPattern)
+                    LabeledContent("DFN3 Profile", value: viewModel.telemetry.dfn3Profile)
+                    LabeledContent("DFN3 Wet Mix", value: String(format: "%.2f", viewModel.telemetry.dfn3WetMix))
                     LabeledContent("Input Rate", value: viewModel.telemetry.inputSampleRateText)
                     LabeledContent("Output Rate", value: viewModel.telemetry.outputSampleRateText)
                     LabeledContent("Active Pipeline", value: viewModel.telemetry.activePipelineID)

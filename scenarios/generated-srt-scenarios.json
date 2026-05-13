@@ -1,0 +1,60 @@
+{
+  "scenarios": [
+    {
+      "scenario_id": "1_pr-bullón-por-qué-sientes-que-nada-cambia-en-tu-vida-spvit79bjds_clip_01",
+      "expected_transcript": "que no puedes dormir en las noches atormentado te revueltas en la cama la biblia te va a hablar lo bonito es que la biblia responde todas las inquietudes del ser humano por eso bienvenido al",
+      "audio_path": "../../../../churchbridge-ai/tests/audio/1/Pr. Bullón - ¿Por qué sientes que nada cambia en tu vida_ [spvit79bjds].mp3",
+      "playback_start_seconds": 446.62,
+      "playback_duration_seconds": 13.41,
+      "playback_lead_in_seconds": 1.25,
+      "playback_tail_seconds": 1.0,
+      "notes": [
+        "Source audio: Pr. Bullón - ¿Por qué sientes que nada cambia en tu vida_ [spvit79bjds].mp3",
+        "Source subtitles: [Spanish] Pr. Bullon - Por que sientes que nada cambia en tu vida [DownSub.com].srt",
+        "Subtitle window: 446.620s-460.030s"
+      ]
+    },
+    {
+      "scenario_id": "1_pr-bullón-por-qué-sientes-que-nada-cambia-en-tu-vida-spvit79bjds_clip_02",
+      "expected_transcript": "2 no pelean porque para ver pelea los dos tienen que querer también que uno puede comenzar pero el otro acepta ahí viene la pelea pero si",
+      "audio_path": "../../../../churchbridge-ai/tests/audio/1/Pr. Bullón - ¿Por qué sientes que nada cambia en tu vida_ [spvit79bjds].mp3",
+      "playback_start_seconds": 2144.29,
+      "playback_duration_seconds": 14.51,
+      "playback_lead_in_seconds": 1.25,
+      "playback_tail_seconds": 1.0,
+      "notes": [
+        "Source audio: Pr. Bullón - ¿Por qué sientes que nada cambia en tu vida_ [spvit79bjds].mp3",
+        "Source subtitles: [Spanish] Pr. Bullon - Por que sientes que nada cambia en tu vida [DownSub.com].srt",
+        "Subtitle window: 2144.290s-2158.800s"
+      ]
+    },
+    {
+      "scenario_id": "2_pastor-gabriel-mendez-cristo-ha-resucitado-9lrshglta4_clip_01",
+      "expected_transcript": "tipo de de de enfermedad que que hacía que saliera esa sangre del sudor. Imagínense usted el dolor, la traición, la soledad, porque le dijo a los discípulos, \"Oren conmigo.\" Ni pudieron",
+      "audio_path": "../../../../churchbridge-ai/tests/audio/2/PASTOR GABRIEL MENDEZ _ CRISTO HA RESUCITADO [_9lRsHGlTA4].mp3",
+      "playback_start_seconds": 471.52,
+      "playback_duration_seconds": 12.399,
+      "playback_lead_in_seconds": 1.25,
+      "playback_tail_seconds": 1.0,
+      "notes": [
+        "Source audio: PASTOR GABRIEL MENDEZ _ CRISTO HA RESUCITADO [_9lRsHGlTA4].mp3",
+        "Source subtitles: [Spanish (auto-generated)] PASTOR GABRIEL MENDEZ  CRISTO HA RESUCITADO [DownSub.com].srt",
+        "Subtitle window: 471.520s-483.919s"
+      ]
+    },
+    {
+      "scenario_id": "2_pastor-gabriel-mendez-cristo-ha-resucitado-9lrshglta4_clip_02",
+      "expected_transcript": "fue una declaración de autoridad. La resurrección no fue un susurro. La resurrección no fue un suspiro o una opinión, no fue una posibilidad.",
+      "audio_path": "../../../../churchbridge-ai/tests/audio/2/PASTOR GABRIEL MENDEZ _ CRISTO HA RESUCITADO [_9lRsHGlTA4].mp3",
+      "playback_start_seconds": 2267.24,
+      "playback_duration_seconds": 14.04,
+      "playback_lead_in_seconds": 1.25,
+      "playback_tail_seconds": 1.0,
+      "notes": [
+        "Source audio: PASTOR GABRIEL MENDEZ _ CRISTO HA RESUCITADO [_9lRsHGlTA4].mp3",
+        "Source subtitles: [Spanish (auto-generated)] PASTOR GABRIEL MENDEZ  CRISTO HA RESUCITADO [DownSub.com].srt",
+        "Subtitle window: 2267.240s-2281.280s"
+      ]
+    }
+  ]
+}

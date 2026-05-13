@@ -130,6 +130,33 @@ class BenchmarkSTTConfig:
 
 
 @dataclass(frozen=True)
+class BenchmarkDFN3TuningConfig:
+    profile: str = "subtle"
+    wet_mix: float | None = None
+    loudness_compensation: float | None = None
+    max_compensation_gain: float | None = None
+    post_gain_db: float | None = None
+    peak_limit: float | None = None
+
+    def controller_payload(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {"profile": self.profile}
+        if self.wet_mix is not None:
+            payload["wet_mix"] = self.wet_mix
+        if self.loudness_compensation is not None:
+            payload["loudness_compensation"] = self.loudness_compensation
+        if self.max_compensation_gain is not None:
+            payload["max_compensation_gain"] = self.max_compensation_gain
+        if self.post_gain_db is not None:
+            payload["post_gain_db"] = self.post_gain_db
+        if self.peak_limit is not None:
+            payload["peak_limit"] = self.peak_limit
+        return payload
+
+    def slug(self) -> str:
+        return str(self.profile or "subtle").strip().lower().replace(" ", "_")
+
+
+@dataclass(frozen=True)
 class BenchmarkRunSpec:
     benchmark_session_id: str
     run_id: str
@@ -143,9 +170,11 @@ class BenchmarkRunSpec:
     server_capture_label: str | None = None
     controller_started_at: str = field(default_factory=_utc_now_iso)
     stt_config: BenchmarkSTTConfig = field(default_factory=BenchmarkSTTConfig)
+    mic_profile: str | None = None
+    dfn3_tuning: BenchmarkDFN3TuningConfig | None = None
 
     def controller_payload(self) -> dict[str, Any]:
-        return {
+        payload = {
             "type": "run_spec",
             "benchmark_session_id": self.benchmark_session_id,
             "run_id": self.run_id,
@@ -159,6 +188,11 @@ class BenchmarkRunSpec:
             "server_capture_label": self.server_capture_label,
             "controller_started_at": self.controller_started_at,
         }
+        if self.mic_profile:
+            payload["mic_profile"] = self.mic_profile
+        if self.dfn3_tuning is not None:
+            payload["dfn3_tuning"] = self.dfn3_tuning.controller_payload()
+        return payload
 
 
 @dataclass
@@ -259,8 +293,10 @@ class BenchmarkRunArtifact:
     telemetry_events: list[TelemetryEvent] = field(default_factory=list)
     display_events: list[DisplayEvent] = field(default_factory=list)
     playback: dict[str, Any] | None = None
+    environment: dict[str, Any] | None = None
     server_capture_requested: bool = False
     server_capture_label: str | None = None
+    analysis: dict[str, Any] | None = None
     notes: list[str] = field(default_factory=list)
     completed_at: str | None = None
 
@@ -272,8 +308,10 @@ class BenchmarkRunArtifact:
             "telemetry_events": [event.as_dict() for event in self.telemetry_events],
             "display_events": [event.as_dict() for event in self.display_events],
             "playback": dict(self.playback or {}) if self.playback else None,
+            "environment": dict(self.environment or {}) if self.environment else None,
             "server_capture_requested": self.server_capture_requested,
             "server_capture_label": self.server_capture_label,
+            "analysis": dict(self.analysis or {}) if self.analysis else None,
             "notes": list(self.notes),
             "completed_at": self.completed_at,
         }
@@ -284,12 +322,14 @@ class BenchmarkSessionPlan:
     session_id: str
     scenario_id: str
     run_specs: list[BenchmarkRunSpec]
+    environment: dict[str, Any] | None = None
     created_at: str = field(default_factory=_utc_now_iso)
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "session_id": self.session_id,
             "scenario_id": self.scenario_id,
+            "environment": dict(self.environment or {}) if self.environment else None,
             "created_at": self.created_at,
             "run_specs": [run_spec.controller_payload() for run_spec in self.run_specs],
         }
@@ -301,6 +341,7 @@ class BenchmarkSessionSummary:
     scenario_id: str
     run_count: int
     run_outputs: list[dict[str, Any]]
+    environment: dict[str, Any] | None = None
     server_capture_requested_run_count: int = 0
     notes: list[str] = field(default_factory=list)
     completed_at: str = field(default_factory=_utc_now_iso)

@@ -56,16 +56,25 @@ This document defines the first-pass control plane between the PC benchmark cont
 ```json
 {
   "type": "run_spec",
-  "run_id": "2026-05-08T13-20-00Z-apple-aec-only",
+  "run_id": "2026-05-08T13-20-00Z-apple-aec-plus-deepfilternet3-front-cardioid",
   "scenario_id": "john-3-16-room-a",
-  "pipeline_id": "apple_aec_only",
+  "pipeline_id": "apple_aec_plus_deepfilternet3",
   "expected_transcript": "For God so loved the world",
   "stt_sample_rate": 16000,
   "chunk_duration_ms": 100,
   "run_duration_ms": 5000,
   "save_server_capture": true,
-  "server_capture_label": "john-3-16-room-a-apple-aec-only",
-  "controller_started_at": "2026-05-08T13:20:00Z"
+  "server_capture_label": "john-3-16-room-a-apple-aec-plus-deepfilternet3-front-cardioid",
+  "controller_started_at": "2026-05-08T13:20:00Z",
+  "mic_profile": "front_cardioid",
+  "dfn3_tuning": {
+    "profile": "subtle",
+    "wet_mix": 0.35,
+    "loudness_compensation": 0.85,
+    "max_compensation_gain": 2.5,
+    "post_gain_db": 0.0,
+    "peak_limit": 0.98
+  }
 }
 ```
 
@@ -74,10 +83,10 @@ This document defines the first-pass control plane between the PC benchmark cont
 ```json
 {
   "type": "ready",
-  "run_id": "2026-05-08T13-20-00Z-apple-aec-only",
-  "pipeline_id": "apple_aec_only",
+  "run_id": "2026-05-08T13-20-00Z-apple-aec-plus-deepfilternet3-front-cardioid",
+  "pipeline_id": "apple_aec_plus_deepfilternet3",
   "save_server_capture": true,
-  "server_capture_label": "john-3-16-room-a-apple-aec-only"
+  "server_capture_label": "john-3-16-room-a-apple-aec-plus-deepfilternet3-front-cardioid"
 }
 ```
 
@@ -86,7 +95,7 @@ This document defines the first-pass control plane between the PC benchmark cont
 ```json
 {
   "type": "run_result",
-  "run_id": "2026-05-08T13-20-00Z-apple-aec-only",
+  "run_id": "2026-05-08T13-20-00Z-apple-aec-plus-deepfilternet3-front-cardioid",
   "status": "completed",
   "first_partial_latency_ms": 820,
   "first_final_latency_ms": 2140,
@@ -104,3 +113,4 @@ This document defines the first-pass control plane between the PC benchmark cont
 - Benchmark runs should request a server capture label whenever later offline audio inspection matters.
 - The intended backend behavior is to retain benchmark audio bundles keyed by session, run, and pipeline so failed or surprising STT results can be replayed and compared later.
 - The first implementation should prefer a tolerant decoder so optional fields can grow over time.
+- `mic_profile` and `dfn3_tuning` are optional and allow the controller to sweep mic-array steering and subtle DFN3 blend settings across otherwise identical runs.

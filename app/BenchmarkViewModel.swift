@@ -260,7 +260,9 @@ final class BenchmarkViewModel {
             runDurationMilliseconds: 5_000,
             saveServerCapture: true,
             serverCaptureLabel: "sample-scenario-\(pipelineID.rawValue)",
-            controllerStartedAt: nil
+            controllerStartedAt: nil,
+            micProfile: nil,
+            dfn3Tuning: nil
         )
     }
 

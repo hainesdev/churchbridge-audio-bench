@@ -6,6 +6,18 @@ The central objective is:
 
 Produce final STT-ready audio on the iPhone client, compare multiple client-side approaches efficiently, and learn as much as possible from each device deployment.
 
+## Current Snapshot
+
+As of 2026-05-12:
+
+- the standalone benchmark project and repo split are complete
+- controller-driven multi-variant sessions are working end to end
+- backend-side WAV retention is working for benchmark runs
+- `apple_aec_only` and `raw_debug` are currently the healthiest capture variants
+- `apple_aec_plus_current_cleanup` is still unstable and should be treated as under investigation
+
+For a more exact handoff summary, see [handoff-status-2026-05-12.md](./handoff-status-2026-05-12.md).
+
 ## 1. Reflection Summary
 
 The project has a few realities we should plan around from the start:
@@ -93,10 +105,10 @@ Responsibilities:
 
 Primary files:
 
-- [BenchmarkAudioCaptureManager.swift](C:/Users/Dan/Desktop/Projects/macOS-ios-dev/shared/churchbridge-ios/ChurchBridgeAudioBench/core/BenchmarkAudioCaptureManager.swift)
-- [AudioPipelineVariant.swift](C:/Users/Dan/Desktop/Projects/macOS-ios-dev/shared/churchbridge-ios/ChurchBridgeAudioBench/core/AudioPipelineVariant.swift)
-- [BenchmarkModels.swift](C:/Users/Dan/Desktop/Projects/macOS-ios-dev/shared/churchbridge-ios/ChurchBridgeAudioBench/core/BenchmarkModels.swift)
-- [BenchmarkTelemetry.swift](C:/Users/Dan/Desktop/Projects/macOS-ios-dev/shared/churchbridge-ios/ChurchBridgeAudioBench/core/BenchmarkTelemetry.swift)
+- [BenchmarkAudioCaptureManager.swift](C:/Users/Dan/Desktop/Projects/macOS-ios-dev/shared/ChurchBridgeAudioBench/core/BenchmarkAudioCaptureManager.swift)
+- [AudioPipelineVariant.swift](C:/Users/Dan/Desktop/Projects/macOS-ios-dev/shared/ChurchBridgeAudioBench/core/AudioPipelineVariant.swift)
+- [BenchmarkModels.swift](C:/Users/Dan/Desktop/Projects/macOS-ios-dev/shared/ChurchBridgeAudioBench/core/BenchmarkModels.swift)
+- [BenchmarkTelemetry.swift](C:/Users/Dan/Desktop/Projects/macOS-ios-dev/shared/ChurchBridgeAudioBench/core/BenchmarkTelemetry.swift)
 
 ### 6.2 Controller workstream
 
@@ -112,9 +124,9 @@ Responsibilities:
 
 Primary files:
 
-- [models.py](C:/Users/Dan/Desktop/Projects/macOS-ios-dev/shared/churchbridge-ios/ChurchBridgeAudioBench/controller/models.py)
-- [display_feed_client.py](C:/Users/Dan/Desktop/Projects/macOS-ios-dev/shared/churchbridge-ios/ChurchBridgeAudioBench/controller/display_feed_client.py)
-- [report_writer.py](C:/Users/Dan/Desktop/Projects/macOS-ios-dev/shared/churchbridge-ios/ChurchBridgeAudioBench/controller/report_writer.py)
+- [models.py](C:/Users/Dan/Desktop/Projects/macOS-ios-dev/shared/ChurchBridgeAudioBench/controller/models.py)
+- [display_feed_client.py](C:/Users/Dan/Desktop/Projects/macOS-ios-dev/shared/ChurchBridgeAudioBench/controller/display_feed_client.py)
+- [report_writer.py](C:/Users/Dan/Desktop/Projects/macOS-ios-dev/shared/ChurchBridgeAudioBench/controller/report_writer.py)
 
 ### 6.3 Reporting workstream
 

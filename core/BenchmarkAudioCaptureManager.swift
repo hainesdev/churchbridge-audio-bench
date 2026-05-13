@@ -25,6 +25,8 @@ final class BenchmarkAudioCaptureManager: NSObject {
     private var currentMode: BenchmarkCaptureMode?
     private var currentRequestedMode: BenchmarkCaptureMode?
     private var currentStrategy: BenchmarkAudioProcessingStrategy = .liveDefault
+    private var currentMicProfile: BenchmarkMicProfile = .auto
+    private var currentDFN3Tuning: BenchmarkResolvedDFN3Tuning = .subtle
     private var isReconfiguring = false
     private var lastReconfigureAt: Date?
     private var dcRejectPreviousInput: Float = 0
@@ -48,6 +50,10 @@ final class BenchmarkAudioCaptureManager: NSObject {
     func start(runSpec: BenchmarkRunSpec) async throws {
         telemetry.activePipelineID = runSpec.pipelineID.rawValue
         telemetry.pipelineFamily = runSpec.pipelineID.profile.family.rawValue
+        currentMicProfile = runSpec.effectiveMicProfile
+        currentDFN3Tuning = runSpec.effectiveDFN3Tuning
+        telemetry.requestedMicProfile = currentMicProfile.displayName
+        applyCurrentDFN3Telemetry(lastAppliedGain: 1)
         try await start(mode: runSpec.captureMode, strategy: runSpec.processingStrategy)
     }
 
@@ -71,6 +77,7 @@ final class BenchmarkAudioCaptureManager: NSObject {
         if strategy == .deepFilterNet3Streaming {
             if #available(iOS 18.0, *) {
                 do {
+                    deepFilterNet3Processor?.setTuning(currentDFN3Tuning)
                     try await deepFilterNet3Processor?.prepare()
                     deepFilterNet3Processor?.reset()
                 } catch {
@@ -103,6 +110,8 @@ final class BenchmarkAudioCaptureManager: NSObject {
         currentMode = nil
         currentRequestedMode = nil
         currentStrategy = .liveDefault
+        currentMicProfile = .auto
+        currentDFN3Tuning = .subtle
         lastReconfigureAt = nil
         telemetry.engineRunning = false
         telemetry.speechDetected = false
@@ -152,7 +161,8 @@ final class BenchmarkAudioCaptureManager: NSObject {
             sessionMode = .measurement
         }
 
-        try session.setCategory(.playAndRecord, mode: sessionMode, options: [.defaultToSpeaker, .allowBluetoothHFP])
+        // Keep the benchmark on the handset mic array instead of letting HFP steal input routing.
+        try session.setCategory(.playAndRecord, mode: sessionMode, options: [.defaultToSpeaker])
         try session.setPreferredSampleRate(48_000)
         try session.setPreferredIOBufferDuration(0.02)
         try? session.setPreferredInputNumberOfChannels(1)
@@ -171,6 +181,134 @@ final class BenchmarkAudioCaptureManager: NSObject {
         }
 
         try session.setActive(true, options: [])
+        try applyPreferredMicrophoneConfiguration(for: currentMicProfile)
+    }
+
+    private func applyPreferredMicrophoneConfiguration(for profile: BenchmarkMicProfile) throws {
+        telemetry.appliedMicProfile = profile.displayName
+        guard let builtInMic = session.availableInputs?.first(where: { $0.portType == .builtInMic }) else {
+            telemetry.appliedMicProfile = "\(profile.displayName) (built-in mic unavailable)"
+            appendWarning("Built-in microphone was unavailable, so the benchmark could not force handset mic-array routing.")
+            refreshRouteTelemetry()
+            return
+        }
+
+        if profile == .auto {
+            try session.setPreferredInput(builtInMic)
+            telemetry.appliedMicProfile = "Auto (built-in mic preferred)"
+            refreshRouteTelemetry()
+            if !telemetry.routeUsesBuiltInMic {
+                appendWarning("The active input route is not the built-in microphone even after requesting it.")
+            }
+            return
+        }
+
+        if let dataSource = selectPreferredDataSource(for: profile, on: builtInMic) {
+            do {
+                try builtInMic.setPreferredDataSource(dataSource)
+            } catch {
+                appendWarning("Preferred microphone data source could not be applied: \(error.localizedDescription)")
+            }
+
+            if let polarPattern = selectPreferredPolarPattern(for: profile, dataSource: dataSource) {
+                do {
+                    try dataSource.setPreferredPolarPattern(polarPattern)
+                } catch {
+                    appendWarning("Preferred microphone polar pattern could not be applied: \(error.localizedDescription)")
+                }
+            }
+        } else {
+            appendWarning("No built-in microphone data source matched the requested \(profile.displayName) profile.")
+        }
+
+        try session.setPreferredInput(builtInMic)
+        refreshRouteTelemetry()
+        if !telemetry.routeUsesBuiltInMic {
+            appendWarning("The active input route is not the built-in microphone even after steering to \(profile.displayName).")
+        }
+    }
+
+    private func selectPreferredDataSource(
+        for profile: BenchmarkMicProfile,
+        on port: AVAudioSessionPortDescription
+    ) -> AVAudioSessionDataSourceDescription? {
+        guard let dataSources = port.dataSources, !dataSources.isEmpty else {
+            return nil
+        }
+
+        let preferredOrientations = preferredOrientationTokens(for: profile)
+        let preferredPattern = desiredPolarPattern(for: profile)
+
+        return dataSources.max { lhs, rhs in
+            dataSourceScore(lhs, preferredOrientations: preferredOrientations, preferredPattern: preferredPattern) <
+                dataSourceScore(rhs, preferredOrientations: preferredOrientations, preferredPattern: preferredPattern)
+        }
+    }
+
+    private func selectPreferredPolarPattern(
+        for profile: BenchmarkMicProfile,
+        dataSource: AVAudioSessionDataSourceDescription?
+    ) -> AVAudioSession.PolarPattern? {
+        let preferredPattern = desiredPolarPattern(for: profile)
+        guard
+            let preferredPattern,
+            let supportedPatterns = dataSource?.supportedPolarPatterns,
+            supportedPatterns.contains(preferredPattern)
+        else {
+            return nil
+        }
+        return preferredPattern
+    }
+
+    private func desiredPolarPattern(for profile: BenchmarkMicProfile) -> AVAudioSession.PolarPattern? {
+        switch profile {
+        case .auto:
+            return nil
+        case .frontCardioid, .backCardioid:
+            return .cardioid
+        }
+    }
+
+    private func preferredOrientationTokens(for profile: BenchmarkMicProfile) -> [String] {
+        switch profile {
+        case .auto:
+            return []
+        case .frontCardioid:
+            return ["front", "top"]
+        case .backCardioid:
+            return ["back", "top"]
+        }
+    }
+
+    private func dataSourceScore(
+        _ dataSource: AVAudioSessionDataSourceDescription,
+        preferredOrientations: [String],
+        preferredPattern: AVAudioSession.PolarPattern?
+    ) -> Int {
+        let orientation = stringValue(dataSource.orientation).lowercased()
+        let location = stringValue(dataSource.location).lowercased()
+
+        var score = 0
+        if let index = preferredOrientations.firstIndex(where: { orientation.contains($0) }) {
+            score += 100 - (index * 10)
+        }
+        if location.contains("upper") {
+            score += 4
+        }
+        if location.contains("lower") {
+            score += 2
+        }
+        if
+            let preferredPattern,
+            let supportedPatterns = dataSource.supportedPolarPatterns,
+            supportedPatterns.contains(preferredPattern)
+        {
+            score += 25
+        }
+        if dataSource.selectedPolarPattern != nil {
+            score += 1
+        }
+        return score
     }
 
     private func configureEngine(for mode: BenchmarkCaptureMode, requestedMode: BenchmarkCaptureMode) throws {
@@ -588,13 +726,68 @@ final class BenchmarkAudioCaptureManager: NSObject {
 
     private func refreshRouteTelemetry() {
         let route = session.currentRoute
+        let availableInputs = session.availableInputs ?? []
+        let preferredInput = session.preferredInput
+        let activeInput = route.inputs.first
+        let selectedDataSource = activeInput?.selectedDataSource ?? session.inputDataSource
+
+        telemetry.routeUsesBuiltInMic = activeInput?.portType == .builtInMic
+        telemetry.availableInputs = availableInputs.map { "\($0.portType.rawValue) | \($0.portName)" }
+        telemetry.preferredInputPort = preferredInput.map { "\($0.portType.rawValue) | \($0.portName)" } ?? ""
+        telemetry.selectedInputPort = activeInput.map { "\($0.portType.rawValue) | \($0.portName)" } ?? ""
+        telemetry.selectedDataSource = selectedDataSource?.dataSourceName ?? ""
+        telemetry.selectedDataSourceLocation = stringValue(selectedDataSource?.location)
+        telemetry.selectedDataSourceOrientation = stringValue(selectedDataSource?.orientation)
+        telemetry.supportedPolarPatterns = selectedDataSource?.supportedPolarPatterns?.map { stringValue($0) } ?? []
+        telemetry.preferredPolarPattern = stringValue(selectedDataSource?.preferredPolarPattern)
+        telemetry.selectedPolarPattern = stringValue(selectedDataSource?.selectedPolarPattern)
         telemetry.routeInputs = route.inputs.map { "\($0.portType.rawValue) | \($0.portName)" }
         telemetry.routeOutputs = route.outputs.map { "\($0.portType.rawValue) | \($0.portName)" }
-        telemetry.routeName = telemetry.routeInputs.joined(separator: ", ")
+        telemetry.routeName = [
+            telemetry.routeInputs.joined(separator: ", "),
+            telemetry.selectedDataSource.isEmpty ? nil : telemetry.selectedDataSource,
+            telemetry.selectedPolarPattern.isEmpty ? nil : telemetry.selectedPolarPattern,
+        ]
+        .compactMap { $0 }
+        .filter { !$0.isEmpty }
+        .joined(separator: " | ")
         if telemetry.routeName.isEmpty {
             telemetry.routeName = "No active input route"
         }
         telemetry.inputSampleRate = session.sampleRate
+    }
+
+    private func appendWarning(_ warning: String) {
+        guard !warning.isEmpty else { return }
+        if !telemetry.warnings.contains(warning) {
+            telemetry.warnings.append(warning)
+        }
+    }
+
+    private func applyCurrentDFN3Telemetry(lastAppliedGain: Float) {
+        guard currentStrategy == .deepFilterNet3Streaming else {
+            telemetry.dfn3Profile = "Inactive"
+            telemetry.dfn3WetMix = 0
+            telemetry.dfn3LoudnessCompensation = 0
+            telemetry.dfn3PostGainDB = 0
+            telemetry.dfn3LastAppliedGain = 0
+            return
+        }
+        telemetry.dfn3Profile = currentDFN3Tuning.displayName
+        telemetry.dfn3WetMix = currentDFN3Tuning.wetMix
+        telemetry.dfn3LoudnessCompensation = currentDFN3Tuning.loudnessCompensation
+        telemetry.dfn3PostGainDB = currentDFN3Tuning.postGainDB
+        let configuredGain = Float(pow(10.0, Double(currentDFN3Tuning.postGainDB) / 20.0))
+        telemetry.dfn3LastAppliedGain = max(lastAppliedGain, configuredGain)
+    }
+
+    private func stringValue(_ value: Any?) -> String {
+        guard let value else { return "" }
+        let description = String(describing: value)
+        if description == "nil" {
+            return ""
+        }
+        return description
     }
 
     private func publishTelemetry() {
@@ -734,6 +927,9 @@ final class BenchmarkAudioCaptureManager: NSObject {
         telemetry.lastRestartAt = nil
         telemetry.lastRestartReason = ""
         telemetry.captureStrategy = currentStrategy.rawValue
+        telemetry.requestedMicProfile = currentMicProfile.displayName
+        telemetry.appliedMicProfile = "Pending"
+        applyCurrentDFN3Telemetry(lastAppliedGain: 1)
         telemetry.outputSampleRate = Double(currentStrategy.targetSampleRate)
         telemetry.chunkSampleCount = chunkSampleCount(for: telemetry.outputSampleRate)
         telemetry.totalEmittedSamples = 0

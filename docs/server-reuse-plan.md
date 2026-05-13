@@ -117,6 +117,13 @@ Current implementation status:
 - `churchbridge-ai` now accepts `benchmarkCapture` on `/api/stream/v1`
 - named benchmark captures are saved under benchmark-specific audio/event paths
 - capture records persist the benchmark identifiers plus a metadata sidecar path
-- the remaining client task is to send that payload from the benchmark iPhone stream client
+- the benchmark iPhone stream client now sends that payload during `session.start`
+- live benchmark sessions are producing WAVs under `churchbridge-ai/tests/audio/captured/benchmarks/`
+- the current backend retention path is functioning well enough for hand-auditing recent runs
+
+Current caution:
+
+- successful WAV retention does not mean every pipeline is healthy
+- recent live runs suggest `apple_aec_plus_current_cleanup` is still unstable even though the server save path is working
 
 This can likely borrow from [session_recorder.py](C:/Users/Dan/Desktop/Projects/churchbridge-ai/server/services/session_recorder.py), but the benchmark should keep its own run labels and artifact semantics.

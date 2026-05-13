@@ -167,6 +167,73 @@ Notes:
 - Scenario manifests can queue multiple local audio files, and each scenario will be run across the selected pipeline matrix in a stable order.
 - The controller uses local playback tools on this PC, so it can simulate a live room session while the iPhone remains untouched.
 - Scenario manifests can also reference a time window inside a longer source file by using `playback_start_seconds` and `playback_duration_seconds`.
+- Controller summaries now derive canonical final transcript, first partial/final latency, WER, CER, and transcript similarity directly from collected `stt_*` display events.
+
+Mic-array steering sweep on the winning Apple path:
+
+```powershell
+python -m controller.run_session `
+  --base-url http://192.168.0.202:8000 `
+  --church-id benchmark-lab `
+  --scenario-file .\scenarios\generated-srt-scenarios.json `
+  --variants apple_aec_only apple_aec_plus_deepfilternet3 `
+  --mic-profiles auto front_cardioid back_cardioid
+```
+
+Subtle-vs-strong DFN3 sweep without changing the rest of the run matrix:
+
+```powershell
+python -m controller.run_session `
+  --base-url http://192.168.0.202:8000 `
+  --church-id benchmark-lab `
+  --scenario-file .\scenarios\generated-srt-scenarios.json `
+  --variants apple_aec_plus_deepfilternet3 deepfilternet3_only `
+  --dfn3-profiles subtle balanced full
+```
+
+Manual DFN3 tuning pass that keeps the model effect intentionally small:
+
+```powershell
+python -m controller.run_session `
+  --base-url http://192.168.0.202:8000 `
+  --church-id benchmark-lab `
+  --scenario-file .\scenarios\generated-srt-scenarios.json `
+  --variants apple_aec_plus_deepfilternet3 `
+  --dfn3-profiles subtle `
+  --dfn3-wet-mix 0.30 `
+  --dfn3-loudness-compensation 0.90 `
+  --dfn3-post-gain-db 0.5
+```
+
+## Physical Noise Methodology
+
+For more realistic room-noise testing, prefer this setup over synthetic controller-side noise:
+
+- Use the PC speakers for the speech source only.
+- Use a separate physical noise source in the room, such as a box fan.
+- Keep `--degradation-condition` unset so the controller does not digitally mix speech and noise into the same playback signal.
+- Record the room setup in the session artifacts with `--environment-label` and one or more `--environment-note` values.
+
+Example box-fan session:
+
+```powershell
+python -m controller.run_session `
+  --base-url http://192.168.0.202:8000 `
+  --church-id benchmark-lab `
+  --scenario-file .\scenarios\generated-srt-scenarios.json `
+  --environment-label box_fan_medium `
+  --environment-note "Speech comes from PC speakers only." `
+  --environment-note "Box fan placed 6 ft from phone, medium setting." `
+  --environment-note "Phone remains screen-facing toward the speech source."
+```
+
+Recommended discipline for repeatable physical-noise sessions:
+
+- keep the phone position fixed
+- keep speaker volume fixed
+- keep fan position and speed fixed
+- run one clean pass with the fan off, then one noisy pass with the fan on
+- compare the same scenario matrix across both sessions
 
 Generate windowed scenarios from long sermon recordings plus SRT files:
 

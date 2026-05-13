@@ -19,11 +19,16 @@ final class BenchmarkDeepFilterNet3Processor {
     private var analysisMemory: [Float] = []
     private var synthesisMemory: [Float] = []
     private var outputBuffer: [Float] = []
+    private var tuning: BenchmarkResolvedDFN3Tuning = .subtle
 
     private(set) var loadWarning: String?
 
     var isReady: Bool {
         network != nil && stft != nil
+    }
+
+    func setTuning(_ tuning: BenchmarkResolvedDFN3Tuning) {
+        self.tuning = tuning
     }
 
     func prepare() async throws {
@@ -176,11 +181,71 @@ final class BenchmarkDeepFilterNet3Processor {
             let emitted = Array(outputBuffer.prefix(emittedCount))
             outputBuffer.removeFirst(emittedCount)
             loadWarning = nil
-            return emitted
+            return applyTuning(
+                drySamples: Array(samples.prefix(emittedCount)),
+                enhancedSamples: emitted
+            )
         } catch {
             loadWarning = "DeepFilterNet3 inference failed: \(error.localizedDescription)"
             return samples
         }
+    }
+
+    private func applyTuning(drySamples: [Float], enhancedSamples: [Float]) -> [Float] {
+        let sampleCount = min(drySamples.count, enhancedSamples.count)
+        guard sampleCount > 0 else { return [] }
+
+        let dryMix = 1 - tuning.wetMix
+        let wetMix = tuning.wetMix
+        let postGain = Float(pow(10.0, Double(tuning.postGainDB) / 20.0))
+
+        var output = [Float](repeating: 0, count: sampleCount)
+        for index in 0..<sampleCount {
+            output[index] = (drySamples[index] * dryMix) + (enhancedSamples[index] * wetMix)
+        }
+
+        let dryRMS = Self.rootMeanSquare(drySamples)
+        let mixedRMS = Self.rootMeanSquare(output)
+        if dryRMS > 0, mixedRMS > 0, tuning.loudnessCompensation > 0 {
+            let targetGain = min(max(dryRMS / mixedRMS, 1), tuning.maxCompensationGain)
+            let compensatedGain = 1 + ((targetGain - 1) * tuning.loudnessCompensation)
+            for index in 0..<sampleCount {
+                output[index] *= compensatedGain
+            }
+        }
+
+        if postGain != 1 {
+            for index in 0..<sampleCount {
+                output[index] *= postGain
+            }
+        }
+
+        let peak = Self.peakMagnitude(output)
+        if peak > tuning.peakLimit, peak > 0 {
+            let limiterGain = tuning.peakLimit / peak
+            for index in 0..<sampleCount {
+                output[index] *= limiterGain
+            }
+        }
+
+        return output
+    }
+
+    private static func rootMeanSquare(_ samples: [Float]) -> Float {
+        guard !samples.isEmpty else { return 0 }
+        var sumSquares: Float = 0
+        for sample in samples {
+            sumSquares += sample * sample
+        }
+        return sqrt(sumSquares / Float(samples.count))
+    }
+
+    private static func peakMagnitude(_ samples: [Float]) -> Float {
+        var peak: Float = 0
+        for sample in samples {
+            peak = max(peak, abs(sample))
+        }
+        return peak
     }
 
     private func ensureAssetsDirectory() async throws -> URL {

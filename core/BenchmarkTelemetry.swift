@@ -3,9 +3,26 @@ import Foundation
 struct BenchmarkTelemetrySnapshot: Codable, Sendable {
     var activePipelineID: String
     var pipelineFamily: String
+    var requestedMicProfile: String
+    var appliedMicProfile: String
+    var routeUsesBuiltInMic: Bool
     var routeName: String
     var routeInputs: [String]
     var routeOutputs: [String]
+    var availableInputs: [String]
+    var preferredInputPort: String
+    var selectedInputPort: String
+    var selectedDataSource: String
+    var selectedDataSourceLocation: String
+    var selectedDataSourceOrientation: String
+    var supportedPolarPatterns: [String]
+    var preferredPolarPattern: String
+    var selectedPolarPattern: String
+    var dfn3Profile: String
+    var dfn3WetMix: Float
+    var dfn3LoudnessCompensation: Float
+    var dfn3PostGainDB: Float
+    var dfn3LastAppliedGain: Float
     var capturePath: String
     var fallbackReason: String
     var inputSampleRate: Double
@@ -67,9 +84,26 @@ struct BenchmarkTelemetrySnapshot: Codable, Sendable {
     static let placeholder = BenchmarkTelemetrySnapshot(
         activePipelineID: BenchmarkPipelineID.appleAECOnly.rawValue,
         pipelineFamily: BenchmarkPipelineFamily.baseline.rawValue,
+        requestedMicProfile: BenchmarkMicProfile.auto.rawValue,
+        appliedMicProfile: "Not applied",
+        routeUsesBuiltInMic: false,
         routeName: "Not configured",
         routeInputs: [],
         routeOutputs: [],
+        availableInputs: [],
+        preferredInputPort: "",
+        selectedInputPort: "",
+        selectedDataSource: "",
+        selectedDataSourceLocation: "",
+        selectedDataSourceOrientation: "",
+        supportedPolarPatterns: [],
+        preferredPolarPattern: "",
+        selectedPolarPattern: "",
+        dfn3Profile: BenchmarkDFN3TuningProfile.subtle.rawValue,
+        dfn3WetMix: BenchmarkResolvedDFN3Tuning.subtle.wetMix,
+        dfn3LoudnessCompensation: BenchmarkResolvedDFN3Tuning.subtle.loudnessCompensation,
+        dfn3PostGainDB: BenchmarkResolvedDFN3Tuning.subtle.postGainDB,
+        dfn3LastAppliedGain: 1,
         capturePath: "Not configured",
         fallbackReason: "",
         inputSampleRate: 0,
