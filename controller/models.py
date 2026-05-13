@@ -10,6 +10,17 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _safe_slug(value: str) -> str:
+    cleaned = "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "-" for ch in str(value or "").strip().lower())
+    cleaned = cleaned.strip("-_.")
+    return cleaned or "tuning"
+
+
+def _slug_float(value: float) -> str:
+    text = f"{float(value):g}"
+    return text.replace("-", "neg").replace(".", "p")
+
+
 def _default_model() -> str:
     return os.getenv("GOOGLE_SPEECH_MODEL", "chirp_3").strip() or "chirp_3"
 
@@ -132,6 +143,7 @@ class BenchmarkSTTConfig:
 @dataclass(frozen=True)
 class BenchmarkDFN3TuningConfig:
     profile: str = "subtle"
+    label: str | None = None
     wet_mix: float | None = None
     loudness_compensation: float | None = None
     max_compensation_gain: float | None = None
@@ -140,6 +152,8 @@ class BenchmarkDFN3TuningConfig:
 
     def controller_payload(self) -> dict[str, Any]:
         payload: dict[str, Any] = {"profile": self.profile}
+        if self.label:
+            payload["label"] = self.label
         if self.wet_mix is not None:
             payload["wet_mix"] = self.wet_mix
         if self.loudness_compensation is not None:
@@ -152,8 +166,25 @@ class BenchmarkDFN3TuningConfig:
             payload["peak_limit"] = self.peak_limit
         return payload
 
+    def as_dict(self) -> dict[str, Any]:
+        return {key: value for key, value in asdict(self).items() if value is not None}
+
     def slug(self) -> str:
-        return str(self.profile or "subtle").strip().lower().replace(" ", "_")
+        if self.label:
+            return _safe_slug(self.label)
+
+        parts = [_safe_slug(self.profile or "subtle")]
+        if self.wet_mix is not None:
+            parts.append(f"wet{_slug_float(self.wet_mix)}")
+        if self.loudness_compensation is not None:
+            parts.append(f"loud{_slug_float(self.loudness_compensation)}")
+        if self.max_compensation_gain is not None:
+            parts.append(f"maxg{_slug_float(self.max_compensation_gain)}")
+        if self.post_gain_db is not None:
+            parts.append(f"post{_slug_float(self.post_gain_db)}db")
+        if self.peak_limit is not None:
+            parts.append(f"peak{_slug_float(self.peak_limit)}")
+        return "-".join(parts)
 
 
 @dataclass(frozen=True)
@@ -187,6 +218,7 @@ class BenchmarkRunSpec:
             "save_server_capture": self.save_server_capture,
             "server_capture_label": self.server_capture_label,
             "controller_started_at": self.controller_started_at,
+            "stt_config": self.stt_config.public_payload(),
         }
         if self.mic_profile:
             payload["mic_profile"] = self.mic_profile

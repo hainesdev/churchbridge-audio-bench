@@ -1,0 +1,31 @@
+{
+  "tunings": [
+    {
+      "label": "speech_guard_light",
+      "profile": "subtle",
+      "wet_mix": 0.15,
+      "loudness_compensation": 1.0,
+      "max_compensation_gain": 3.0,
+      "post_gain_db": 0.0,
+      "peak_limit": 0.98
+    },
+    {
+      "label": "speech_guard_medium",
+      "profile": "subtle",
+      "wet_mix": 0.25,
+      "loudness_compensation": 0.95,
+      "max_compensation_gain": 2.75,
+      "post_gain_db": 0.0,
+      "peak_limit": 0.98
+    },
+    {
+      "label": "speech_guard_present",
+      "profile": "subtle",
+      "wet_mix": 0.35,
+      "loudness_compensation": 0.9,
+      "max_compensation_gain": 2.5,
+      "post_gain_db": 0.5,
+      "peak_limit": 0.98
+    }
+  ]
+}

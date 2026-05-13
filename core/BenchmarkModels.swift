@@ -164,6 +164,60 @@ struct BenchmarkDFN3TuningConfig: Codable, Sendable {
     )
 }
 
+struct BenchmarkSTTConfig: Codable, Sendable {
+    let model: String
+    let language: String
+    let languageCodes: [String]
+    let location: String
+    let recognizer: String
+    let interimResults: Bool
+    let utteranceEndMilliseconds: Int
+    let vadEvents: Bool
+    let smartFormat: Bool
+    let punctuate: Bool
+    let confidenceHoldThreshold: Double
+    let lowConfidenceHoldSeconds: Double
+    let diarizationEnabled: Bool
+    let diarizationMinSpeakers: Int
+    let diarizationMaxSpeakers: Int
+
+    enum CodingKeys: String, CodingKey {
+        case model
+        case language
+        case languageCodes
+        case location
+        case recognizer
+        case interimResults
+        case utteranceEndMilliseconds = "utteranceEndMs"
+        case vadEvents
+        case smartFormat
+        case punctuate
+        case confidenceHoldThreshold
+        case lowConfidenceHoldSeconds = "lowConfidenceHoldSecs"
+        case diarizationEnabled
+        case diarizationMinSpeakers
+        case diarizationMaxSpeakers
+    }
+
+    static let `default` = BenchmarkSTTConfig(
+        model: "chirp_3",
+        language: "es-US",
+        languageCodes: ["es-US", "en-US"],
+        location: "us",
+        recognizer: "_",
+        interimResults: true,
+        utteranceEndMilliseconds: 2_000,
+        vadEvents: true,
+        smartFormat: true,
+        punctuate: true,
+        confidenceHoldThreshold: 0.72,
+        lowConfidenceHoldSeconds: 2.5,
+        diarizationEnabled: false,
+        diarizationMinSpeakers: 2,
+        diarizationMaxSpeakers: 2
+    )
+}
+
 struct BenchmarkPipelineProfile: Sendable, Identifiable {
     let id: BenchmarkPipelineID
     let family: BenchmarkPipelineFamily
@@ -312,6 +366,7 @@ struct BenchmarkRunSpec: Codable, Sendable, Identifiable {
     let saveServerCapture: Bool
     let serverCaptureLabel: String?
     let controllerStartedAt: Date?
+    let sttConfig: BenchmarkSTTConfig?
     let micProfile: BenchmarkMicProfile?
     let dfn3Tuning: BenchmarkDFN3TuningConfig?
 
@@ -329,6 +384,7 @@ struct BenchmarkRunSpec: Codable, Sendable, Identifiable {
         case saveServerCapture = "save_server_capture"
         case serverCaptureLabel = "server_capture_label"
         case controllerStartedAt = "controller_started_at"
+        case sttConfig = "stt_config"
         case micProfile = "mic_profile"
         case dfn3Tuning = "dfn3_tuning"
     }
@@ -343,6 +399,10 @@ struct BenchmarkRunSpec: Codable, Sendable, Identifiable {
 
     var effectiveMicProfile: BenchmarkMicProfile {
         micProfile ?? .auto
+    }
+
+    var effectiveSTTConfig: BenchmarkSTTConfig {
+        sttConfig ?? .default
     }
 
     var effectiveDFN3Tuning: BenchmarkResolvedDFN3Tuning {
@@ -361,6 +421,7 @@ struct BenchmarkRunSpec: Codable, Sendable, Identifiable {
         saveServerCapture: true,
         serverCaptureLabel: "sample-scenario-apple-aec-only",
         controllerStartedAt: nil,
+        sttConfig: .default,
         micProfile: nil,
         dfn3Tuning: nil
     )

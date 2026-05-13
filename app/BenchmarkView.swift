@@ -73,6 +73,7 @@ struct BenchmarkView: View {
                     LabeledContent("Run Duration", value: durationText(viewModel.activeRunSpec?.runDurationMilliseconds))
                     LabeledContent("Server Capture", value: serverCaptureText(for: viewModel.activeRunSpec))
                     LabeledContent("Capture Label", value: viewModel.activeRunSpec?.serverCaptureLabel ?? "None")
+                    LabeledContent("STT Model", value: viewModel.activeRunSpec?.effectiveSTTConfig.model ?? "Default")
                     LabeledContent("Mic Profile", value: viewModel.activeRunSpec?.effectiveMicProfile.displayName ?? "Not loaded")
                     LabeledContent("DFN3", value: viewModel.activeRunSpec?.dfn3Tuning?.resolved.displayName ?? "Default")
                 }

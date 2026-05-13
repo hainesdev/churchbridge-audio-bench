@@ -96,8 +96,66 @@ Important controller-side additions:
 
 - `--mic-profiles` sweeps built-in mic-array steering profiles across the selected pipelines.
 - `--dfn3-profiles` sweeps named DFN3 tuning presets across DFN3-backed pipelines only.
+- `--stt-models` sweeps backend STT models across the same pipeline matrix, which makes direct `chirp_3` vs `nova-3` comparisons possible in one session.
 - `--dfn3-wet-mix`, `--dfn3-loudness-compensation`, `--dfn3-max-compensation-gain`, `--dfn3-post-gain-db`, and `--dfn3-peak-limit` let one session override the DFN3 preset numerically.
 - Session summaries now include controller-derived final transcript, first partial/final latency, WER, CER, transcript similarity, selected mic data source, selected polar pattern, and max capture restarts per run.
+
+Example Chirp 3 vs Nova 3 comparison:
+
+```powershell
+python -m controller.run_session `
+  --base-url http://192.168.0.202:8000 `
+  --church-id benchmark-lab `
+  --scenario-file .\scenarios\generated-srt-scenarios.json `
+  --variants apple_aec_plus_deepfilternet3 `
+  --include-raw-compare `
+  --stt-models chirp_3 nova-3 `
+  --dfn3-profiles subtle `
+  --dfn3-wet-mix 0.25 `
+  --dfn3-loudness-compensation 0.95 `
+  --dfn3-max-compensation-gain 2.75 `
+  --dfn3-post-gain-db 0
+```
+
+## VoiceChat DFN3 Tuning Sweeps
+
+When the goal is to keep `voiceChat` fixed and only tune the DFN3 layer, use a DFN3 tuning manifest plus `--include-raw-compare`.
+
+Sample tuning manifest:
+
+- [scenarios/dfn3-voicechat-tuning-sweep.json](C:/Users/Dan/Desktop/Projects/macOS-ios-dev/shared/ChurchBridgeAudioBench/scenarios/dfn3-voicechat-tuning-sweep.json)
+
+Each tuning entry can define:
+
+- `label`
+- `profile`
+- `wet_mix`
+- `loudness_compensation`
+- `max_compensation_gain`
+- `post_gain_db`
+- `peak_limit`
+
+Recommended fan-noise command pattern:
+
+```powershell
+python -m controller.run_session `
+  --base-url http://192.168.0.202:8000 `
+  --church-id benchmark-lab `
+  --scenario-file .\scenarios\generated-srt-scenarios.json `
+  --variants apple_aec_plus_deepfilternet3 `
+  --include-raw-compare `
+  --dfn3-tuning-file .\scenarios\dfn3-voicechat-tuning-sweep.json `
+  --environment-label box_fan_high `
+  --environment-note "PC speakers provide speech playback only." `
+  --environment-note "Box fan on high, fixed position for whole session."
+```
+
+That queue will run:
+
+- one `raw_debug` comparison capture per scenario
+- one `apple_aec_plus_deepfilternet3` run per tuning entry, back to back
+
+The controller writes the tuning label, tuning slug, and the full DFN3 knob payload into `summary.json` and each run artifact so it is easy to compare the resulting WAVs later.
 
 ## Physical Room Noise
 

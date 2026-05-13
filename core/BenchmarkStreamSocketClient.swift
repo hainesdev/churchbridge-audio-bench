@@ -122,6 +122,7 @@ actor BenchmarkStreamSocketClient {
                 topic: "",
                 sourceScriptureVersion: configuration.sourceScriptureVersion,
                 displayScriptureVersion: configuration.displayScriptureVersion,
+                sttConfig: runSpec.effectiveSTTConfig,
                 benchmarkCapture: BenchmarkCaptureDescriptor(
                     enabled: runSpec.saveServerCapture,
                     sessionId: runSpec.benchmarkSessionID,
@@ -282,6 +283,7 @@ private struct StreamStartPayload: Encodable {
     let topic: String
     let sourceScriptureVersion: String
     let displayScriptureVersion: String
+    let sttConfig: BenchmarkSTTConfig
     let benchmarkCapture: BenchmarkStreamSocketClient.BenchmarkCaptureDescriptor
 }
 

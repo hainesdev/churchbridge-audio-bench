@@ -1,0 +1,112 @@
+{
+  "tunings": [
+    {
+      "label": "wm22_max25_post0",
+      "profile": "subtle",
+      "wet_mix": 0.22,
+      "loudness_compensation": 0.95,
+      "max_compensation_gain": 2.5,
+      "post_gain_db": 0.0,
+      "peak_limit": 0.98
+    },
+    {
+      "label": "wm22_max25_post025",
+      "profile": "subtle",
+      "wet_mix": 0.22,
+      "loudness_compensation": 0.95,
+      "max_compensation_gain": 2.5,
+      "post_gain_db": 0.25,
+      "peak_limit": 0.98
+    },
+    {
+      "label": "wm22_max275_post0",
+      "profile": "subtle",
+      "wet_mix": 0.22,
+      "loudness_compensation": 0.95,
+      "max_compensation_gain": 2.75,
+      "post_gain_db": 0.0,
+      "peak_limit": 0.98
+    },
+    {
+      "label": "wm22_max275_post025",
+      "profile": "subtle",
+      "wet_mix": 0.22,
+      "loudness_compensation": 0.95,
+      "max_compensation_gain": 2.75,
+      "post_gain_db": 0.25,
+      "peak_limit": 0.98
+    },
+    {
+      "label": "wm25_max25_post0",
+      "profile": "subtle",
+      "wet_mix": 0.25,
+      "loudness_compensation": 0.95,
+      "max_compensation_gain": 2.5,
+      "post_gain_db": 0.0,
+      "peak_limit": 0.98
+    },
+    {
+      "label": "wm25_max25_post025",
+      "profile": "subtle",
+      "wet_mix": 0.25,
+      "loudness_compensation": 0.95,
+      "max_compensation_gain": 2.5,
+      "post_gain_db": 0.25,
+      "peak_limit": 0.98
+    },
+    {
+      "label": "wm25_max275_post0",
+      "profile": "subtle",
+      "wet_mix": 0.25,
+      "loudness_compensation": 0.95,
+      "max_compensation_gain": 2.75,
+      "post_gain_db": 0.0,
+      "peak_limit": 0.98
+    },
+    {
+      "label": "wm25_max275_post025",
+      "profile": "subtle",
+      "wet_mix": 0.25,
+      "loudness_compensation": 0.95,
+      "max_compensation_gain": 2.75,
+      "post_gain_db": 0.25,
+      "peak_limit": 0.98
+    },
+    {
+      "label": "wm28_max25_post0",
+      "profile": "subtle",
+      "wet_mix": 0.28,
+      "loudness_compensation": 0.95,
+      "max_compensation_gain": 2.5,
+      "post_gain_db": 0.0,
+      "peak_limit": 0.98
+    },
+    {
+      "label": "wm28_max25_post025",
+      "profile": "subtle",
+      "wet_mix": 0.28,
+      "loudness_compensation": 0.95,
+      "max_compensation_gain": 2.5,
+      "post_gain_db": 0.25,
+      "peak_limit": 0.98
+    },
+    {
+      "label": "wm28_max275_post0",
+      "profile": "subtle",
+      "wet_mix": 0.28,
+      "loudness_compensation": 0.95,
+      "max_compensation_gain": 2.75,
+      "post_gain_db": 0.0,
+      "peak_limit": 0.98
+    },
+    {
+      "label": "wm28_max275_post025",
+      "profile": "subtle",
+      "wet_mix": 0.28,
+      "loudness_compensation": 0.95,
+      "max_compensation_gain": 2.75,
+      "post_gain_db": 0.25,
+      "peak_limit": 0.98
+    }
+  ]
+}
