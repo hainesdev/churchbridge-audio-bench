@@ -17,7 +17,7 @@ here changes those terms, and they do not apply to the components below.
 `core/BenchmarkDeepFilterNet3Processor.swift` and
 `core/DeepFilterNet3_Streaming.swift` implement the DeepFilterNet3 streaming
 signal chain — STFT analysis and synthesis, the ERB filterbank and its inverse,
-deep-filter application, overlap-add memory, and running normalisation — in
+deep-filter application, overlap-add memory, and running normalization — in
 Swift against Accelerate. The architecture, coefficients, and processing order
 are DeepFilterNet's; the Swift implementation is not.
 
