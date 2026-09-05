@@ -256,3 +256,17 @@ Execution details:
 Server/backend reuse notes:
 
 - [server-reuse-plan.md](./docs/server-reuse-plan.md)
+
+## License
+
+Source-available under the
+[PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0) —
+any noncommercial purpose is permitted; commercial use requires a separate
+written license. See [LICENSE](./LICENSE) and [LICENSE-FAQ.md](./LICENSE-FAQ.md).
+
+The DeepFilterNet3 signal chain in `core/` is derived from
+[DeepFilterNet](https://github.com/Rikorose/DeepFilterNet) (MIT), and the model
+weights are fetched at runtime from
+[aufklarer/DeepFilterNet3-CoreML](https://huggingface.co/aufklarer/DeepFilterNet3-CoreML)
+(Apache-2.0) rather than redistributed here. See
+[THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md).

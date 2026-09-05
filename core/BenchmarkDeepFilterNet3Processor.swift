@@ -1,3 +1,10 @@
+//
+// Implements the DeepFilterNet3 streaming signal chain.
+// Derived from DeepFilterNet (https://github.com/Rikorose/DeepFilterNet),
+// Copyright (c) 2021 Hendrik Schröter, MIT License.
+// See LICENSE-DEEPFILTERNET and THIRD-PARTY-NOTICES.md.
+//
+
 import Accelerate
 import CoreML
 import Foundation
