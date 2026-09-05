@@ -76,7 +76,12 @@ The primary benchmark is a live end-to-end acoustic test:
 - `ChurchBridgeAudioBench` now lives in its own standalone repository and Xcode project.
 - The project entry point is `ChurchBridgeAudioBench.xcodeproj`.
 - The benchmark app now supports controller-driven queued multi-variant sessions against the existing backend.
-- The benchmark app now defaults to the lab controller/backend endpoints at `ws://192.168.0.202:8765` and `http://192.168.0.202:8000`.
+- The benchmark app's controller and backend endpoints are editable in-app and
+  persisted per device. They default to `ws://benchmark-controller.local:8765`
+  and `http://benchmark-controller.local:8000`; to preset them for a build, add
+  `BenchmarkControllerURL` and `BenchmarkBackendBaseURL` to the target's
+  Info.plist. Replace `<controller-host>` in the commands below with the address
+  of the machine running the controller.
 - The benchmark app can auto-connect to the controller on launch and when the app returns to the foreground, which means the phone can be left open and driven remotely by the PC controller.
 - The benchmark app currently includes a minimal SwiftUI shell plus a benchmark-owned copy of the current audio capture manager.
 - The initial server strategy is to reuse the existing Church Bridge backend in [churchbridge-ai](C:/Users/Dan/Desktop/Projects/churchbridge-ai) rather than build a second ingest stack immediately.
@@ -145,7 +150,7 @@ Single-scenario automated playback example:
 
 ```powershell
 python -m controller.run_session `
-  --base-url http://192.168.0.202:8000 `
+  --base-url http://<controller-host>:8000 `
   --church-id benchmark-lab `
   --scenario-id john3_16_room_a `
   --expected-transcript "For God so loved the world" `
@@ -156,7 +161,7 @@ Multi-file scenario-manifest example:
 
 ```powershell
 python -m controller.run_session `
-  --base-url http://192.168.0.202:8000 `
+  --base-url http://<controller-host>:8000 `
   --church-id benchmark-lab `
   --scenario-file .\scenarios\example-benchmark-session.json
 ```
@@ -173,7 +178,7 @@ Mic-array steering sweep on the winning Apple path:
 
 ```powershell
 python -m controller.run_session `
-  --base-url http://192.168.0.202:8000 `
+  --base-url http://<controller-host>:8000 `
   --church-id benchmark-lab `
   --scenario-file .\scenarios\generated-srt-scenarios.json `
   --variants apple_aec_only apple_aec_plus_deepfilternet3 `
@@ -184,7 +189,7 @@ Subtle-vs-strong DFN3 sweep without changing the rest of the run matrix:
 
 ```powershell
 python -m controller.run_session `
-  --base-url http://192.168.0.202:8000 `
+  --base-url http://<controller-host>:8000 `
   --church-id benchmark-lab `
   --scenario-file .\scenarios\generated-srt-scenarios.json `
   --variants apple_aec_plus_deepfilternet3 deepfilternet3_only `
@@ -195,7 +200,7 @@ Manual DFN3 tuning pass that keeps the model effect intentionally small:
 
 ```powershell
 python -m controller.run_session `
-  --base-url http://192.168.0.202:8000 `
+  --base-url http://<controller-host>:8000 `
   --church-id benchmark-lab `
   --scenario-file .\scenarios\generated-srt-scenarios.json `
   --variants apple_aec_plus_deepfilternet3 `
@@ -218,7 +223,7 @@ Example box-fan session:
 
 ```powershell
 python -m controller.run_session `
-  --base-url http://192.168.0.202:8000 `
+  --base-url http://<controller-host>:8000 `
   --church-id benchmark-lab `
   --scenario-file .\scenarios\generated-srt-scenarios.json `
   --environment-label box_fan_medium `

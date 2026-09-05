@@ -187,7 +187,7 @@ Environment assumptions for that run:
 
 - backend repo revision: `701e6fe3f9f1e70628162f3daf9beb5393c762e1`
 - benchmark app revision: `07e55fcef5187f6987339471b61778272b7632b6`
-- the backend was already running and reachable on the local LAN at `http://192.168.0.202:8000`
+- the backend was already running and reachable on the local LAN at `http://<controller-host>:8000`
 - the iPhone and controller PC were on the same network
 - the benchmark app was already installed on the phone via TestFlight and configured to talk to the controller and backend
 
@@ -195,7 +195,7 @@ From [ChurchBridgeAudioBench](C:/Users/Dan/Desktop/Projects/macOS-ios-dev/shared
 
 ```powershell
 python -m controller.run_session `
-  --base-url http://192.168.0.202:8000 `
+  --base-url http://<controller-host>:8000 `
   --church-id benchmark-lab `
   --scenario-id john3_16_room_a `
   --expected-transcript "For God so loved the world" `

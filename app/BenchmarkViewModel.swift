@@ -3,9 +3,30 @@ import Foundation
 @MainActor
 @Observable
 final class BenchmarkViewModel {
-    static let labControllerURLString = "ws://192.168.0.202:8765"
-    static let labBackendBaseURLString = "http://192.168.0.202:8000"
+    /// Default controller and backend endpoints.
+    ///
+    /// Both are only the *initial* values: they are editable in the app and
+    /// persisted per device, so a lab address never needs to be committed. To
+    /// preset them for a build, add `BenchmarkControllerURL` and
+    /// `BenchmarkBackendBaseURL` to the target's Info.plist; otherwise the
+    /// placeholder host below applies and can be overwritten in the UI.
+    static let labControllerURLString = configuredDefault(
+        infoKey: "BenchmarkControllerURL",
+        fallback: "ws://benchmark-controller.local:8765"
+    )
+    static let labBackendBaseURLString = configuredDefault(
+        infoKey: "BenchmarkBackendBaseURL",
+        fallback: "http://benchmark-controller.local:8000"
+    )
     static let labChurchID = "benchmark-lab"
+
+    private static func configuredDefault(infoKey: String, fallback: String) -> String {
+        guard let raw = Bundle.main.object(forInfoDictionaryKey: infoKey) as? String else {
+            return fallback
+        }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? fallback : trimmed
+    }
 
     private enum DefaultsKey {
         static let runMode = "BenchmarkViewModel.runMode"

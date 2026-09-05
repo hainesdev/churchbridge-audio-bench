@@ -22,7 +22,7 @@ struct BenchmarkView: View {
                 }
 
                 Section("Controller") {
-                    TextField("ws://192.168.0.202:8765", text: $viewModel.controllerURLString)
+                    TextField(BenchmarkViewModel.labControllerURLString, text: $viewModel.controllerURLString)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .font(.footnote.monospaced())
@@ -39,7 +39,7 @@ struct BenchmarkView: View {
                 }
 
                 Section("Backend") {
-                    TextField("http://192.168.0.202:8000", text: $viewModel.backendBaseURLString)
+                    TextField(BenchmarkViewModel.labBackendBaseURLString, text: $viewModel.backendBaseURLString)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .font(.footnote.monospaced())

@@ -67,7 +67,7 @@ Example:
 
 ```powershell
 python -m controller.run_session `
-  --base-url http://192.168.0.202:8000 `
+  --base-url http://<controller-host>:8000 `
   --church-id benchmark-lab `
   --scenario-file .\scenarios\example-benchmark-session.json
 ```
@@ -84,7 +84,7 @@ The controller can also sweep mic steering and DFN3 tuning without changing app 
 
 ```powershell
 python -m controller.run_session `
-  --base-url http://192.168.0.202:8000 `
+  --base-url http://<controller-host>:8000 `
   --church-id benchmark-lab `
   --scenario-file .\scenarios\generated-srt-scenarios.json `
   --variants apple_aec_only apple_aec_plus_deepfilternet3 `
@@ -104,7 +104,7 @@ Example Chirp 3 vs Nova 3 comparison:
 
 ```powershell
 python -m controller.run_session `
-  --base-url http://192.168.0.202:8000 `
+  --base-url http://<controller-host>:8000 `
   --church-id benchmark-lab `
   --scenario-file .\scenarios\generated-srt-scenarios.json `
   --variants apple_aec_plus_deepfilternet3 `
@@ -139,7 +139,7 @@ Recommended fan-noise command pattern:
 
 ```powershell
 python -m controller.run_session `
-  --base-url http://192.168.0.202:8000 `
+  --base-url http://<controller-host>:8000 `
   --church-id benchmark-lab `
   --scenario-file .\scenarios\generated-srt-scenarios.json `
   --variants apple_aec_plus_deepfilternet3 `
@@ -165,7 +165,7 @@ Recommended command pattern:
 
 ```powershell
 python -m controller.run_session `
-  --base-url http://192.168.0.202:8000 `
+  --base-url http://<controller-host>:8000 `
   --church-id benchmark-lab `
   --scenario-file .\scenarios\generated-srt-scenarios.json `
   --environment-label box_fan_medium `
