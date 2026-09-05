@@ -27,6 +27,23 @@ Upstream asks that use of the DeepFilterNet3 model be cited:
 > "DeepFilterNet: Perceptually Motivated Real-Time Speech Enhancement."
 > INTERSPEECH, 2023.
 
+## soniqo/speech-swift — auxiliary-data loading
+
+- **Upstream:** https://github.com/soniqo/speech-swift
+- **License:** Apache License 2.0
+- **Full license text:** [`LICENSE-APACHE-2.0`](LICENSE-APACHE-2.0)
+
+Portions of `core/BenchmarkDeepFilterNet3Processor.swift` are derived from this
+project: the `.npz` / `.npy` auxiliary-data loading, specifically `parseNpy`,
+`loadAuxiliaryData`, and the `readUInt16` / `readUInt32` / `readUInt64` helpers,
+including the ZIP64 handling used to read the model's auxiliary archive.
+
+**That file has been modified from the original**, as required by section 4(b)
+of the Apache License. The surrounding STFT, ERB filterbank, deep-filter
+application, tuning, and streaming logic are not from this source.
+
+The upstream project ships no `NOTICE` file, so there is none to reproduce here.
+
 ## DeepFilterNet3-CoreML — the model weights
 
 - **Source:** https://huggingface.co/aufklarer/DeepFilterNet3-CoreML

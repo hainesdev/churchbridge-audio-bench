@@ -264,8 +264,10 @@ Source-available under the
 any noncommercial purpose is permitted; commercial use requires a separate
 written license. See [LICENSE](./LICENSE) and [LICENSE-FAQ.md](./LICENSE-FAQ.md).
 
-The DeepFilterNet3 signal chain in `core/` is derived from
-[DeepFilterNet](https://github.com/Rikorose/DeepFilterNet) (MIT), and the model
+The DeepFilterNet3 signal chain in `core/` implements the architecture from
+[DeepFilterNet](https://github.com/Rikorose/DeepFilterNet) (MIT) and contains
+auxiliary-data loading derived from
+[soniqo/speech-swift](https://github.com/soniqo/speech-swift) (Apache-2.0). The model
 weights are fetched at runtime from
 [aufklarer/DeepFilterNet3-CoreML](https://huggingface.co/aufklarer/DeepFilterNet3-CoreML)
 (Apache-2.0) rather than redistributed here. See

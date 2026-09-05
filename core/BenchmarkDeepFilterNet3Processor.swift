@@ -1,8 +1,15 @@
 //
 // Implements the DeepFilterNet3 streaming signal chain.
-// Derived from DeepFilterNet (https://github.com/Rikorose/DeepFilterNet),
-// Copyright (c) 2021 Hendrik Schröter, MIT License.
-// See LICENSE-DEEPFILTERNET and THIRD-PARTY-NOTICES.md.
+//
+// The architecture is DeepFilterNet3 (https://github.com/Rikorose/DeepFilterNet),
+// Copyright (c) 2021 Hendrik Schroeter, MIT License.
+//
+// Portions of this file -- the .npz/.npy auxiliary-data loading, including
+// parseNpy, loadAuxiliaryData and the readUInt16/32/64 helpers -- are derived
+// from soniqo/speech-swift (https://github.com/soniqo/speech-swift), licensed
+// under the Apache License 2.0. This file has been modified from that source.
+//
+// See LICENSE-DEEPFILTERNET, LICENSE-APACHE-2.0 and THIRD-PARTY-NOTICES.md.
 //
 
 import Accelerate
