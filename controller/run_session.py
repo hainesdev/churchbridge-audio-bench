@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .alignment import SyncMarkerSpec
 from .analysis import apply_derived_run_analysis, derive_run_analysis
 from .audio_helpers import schedule_audio_playback
 from .control_server import BenchmarkControlServer
@@ -82,12 +83,18 @@ def _build_prepared_runs(
     default_run_seconds: float,
     default_display_seconds: float,
     save_server_capture: bool,
+    marker_lead_seconds: float = 0.0,
 ) -> list[PreparedBenchmarkRun]:
     prepared_runs: list[PreparedBenchmarkRun] = []
     run_index = 1
     for scenario in scenarios:
-        run_seconds = scenario.computed_run_seconds(minimum_seconds=default_run_seconds)
-        display_seconds = scenario.computed_display_seconds(minimum_seconds=max(default_display_seconds, run_seconds))
+        run_seconds = scenario.computed_run_seconds(
+            minimum_seconds=default_run_seconds, extra_lead_seconds=marker_lead_seconds
+        )
+        display_seconds = scenario.computed_display_seconds(
+            minimum_seconds=max(default_display_seconds, run_seconds),
+            extra_lead_seconds=marker_lead_seconds,
+        )
         for pipeline_id in variants:
             pipeline_dfn3_tunings = dfn3_tunings if _pipeline_supports_dfn3(pipeline_id) else [None]
             for stt_config in stt_configs:
@@ -304,6 +311,14 @@ async def _run_session(args: argparse.Namespace) -> None:
     stt_configs = _resolved_stt_configs(args)
     mic_profiles = _resolved_mic_profiles(args)
     dfn3_tunings = _resolved_dfn3_tunings(args, repo_root=repo_root)
+
+    # The marker is prepended to whatever is played, so each capture carries the
+    # offset that aligns it to its reference transcript. Without it, playback and
+    # capture latency is scored as words missed or invented. It lengthens the
+    # played asset, so the capture window has to grow with it.
+    sync_marker = None if args.no_sync_marker else SyncMarkerSpec()
+    marker_lead_seconds = sync_marker.total_seconds() if sync_marker is not None else 0.0
+
     prepared_runs = _build_prepared_runs(
         benchmark_session_id=session_id,
         scenarios=scenarios,
@@ -335,6 +350,7 @@ async def _run_session(args: argparse.Namespace) -> None:
         default_run_seconds=max(args.run_seconds, 0.5),
         default_display_seconds=max(args.display_seconds, 0.5),
         save_server_capture=not args.disable_server_capture,
+        marker_lead_seconds=marker_lead_seconds,
     )
     writer = BenchmarkReportWriter(session_root)
     session_scenario_id = scenarios[0].scenario_id if len({scenario.scenario_id for scenario in scenarios}) == 1 else "multi-scenario"
@@ -354,8 +370,9 @@ async def _run_session(args: argparse.Namespace) -> None:
     print(f"Device connected: {device_hello.device_name} ({device_hello.system_version})")
 
     try:
-        for prepared_run in prepared_runs:
+        for run_number, prepared_run in enumerate(prepared_runs, start=1):
             run_spec = prepared_run.run_spec
+            marker_id = run_number % 256
             scenario = prepared_run.scenario
             client = DisplayFeedClient(base_url=args.base_url, church_id=args.church_id)
             display_task = asyncio.create_task(client.collect_for_duration(prepared_run.display_seconds))
@@ -364,12 +381,14 @@ async def _run_session(args: argparse.Namespace) -> None:
                     run_spec=run_spec,
                     display_events_task=display_task,
                     playback_coordinator=(
-                        (lambda scenario=scenario: schedule_audio_playback(
+                        (lambda scenario=scenario, marker_id=marker_id: schedule_audio_playback(
                             scenario.audio_path,
                             playback_delay_seconds=scenario.playback_lead_in_seconds,
                             playback_start_seconds=scenario.playback_start_seconds,
                             playback_duration_seconds=scenario.playback_duration_seconds,
                             degradation=scenario.degradation,
+                            sync_marker=sync_marker,
+                            marker_id=marker_id,
                         ))
                         if scenario.audio_path is not None
                         else None
@@ -397,7 +416,14 @@ async def _run_session(args: argparse.Namespace) -> None:
                 degradation_note = ""
                 if scenario.degradation is not None:
                     degradation_note = f" Degradation: {scenario.degradation.metadata()}."
-                notes.append(f"Local controller playback was scheduled from {scenario.audio_path}.{window_note}{degradation_note}")
+                marker_note = ""
+                if sync_marker is not None:
+                    marker_note = (
+                        f" Sync marker id={marker_id} prepended"
+                        f" ({sync_marker.total_seconds():.2f}s lead-in);"
+                        " capture offset is recoverable with controller.alignment.find_marker."
+                    )
+                notes.append(f"Local controller playback was scheduled from {scenario.audio_path}.{window_note}{degradation_note}{marker_note}")
             if environment is not None:
                 label = environment.get("label")
                 env_note = f"Physical environment label: {label}." if label else "Physical environment metadata was provided for this session."
@@ -639,6 +665,14 @@ def _parse_args() -> argparse.Namespace:
         action="append",
         default=[],
         help="Optional repeatable note describing the physical room setup, such as fan position or phone distance.",
+    )
+    parser.add_argument(
+        "--no-sync-marker",
+        action="store_true",
+        help=(
+            "Do not prepend the acoustic sync marker to played audio. The marker is what makes"
+            " word error rate trustworthy, so disable it only when measuring the marker's own cost."
+        ),
     )
     parser.add_argument("--disable-server-capture", action="store_true", help="Do not request backend audio retention for this session")
     parser.add_argument(

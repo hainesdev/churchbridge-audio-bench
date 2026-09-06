@@ -120,12 +120,23 @@ class BenchmarkScenarioFixture:
     def with_degradation(self, degradation: PlaybackDegradationSpec | None) -> "BenchmarkScenarioFixture":
         return replace(self, degradation=degradation)
 
-    def computed_run_seconds(self, *, minimum_seconds: float) -> float:
+    def computed_run_seconds(self, *, minimum_seconds: float, extra_lead_seconds: float = 0.0) -> float:
+        """Capture duration needed to hold the whole clip with margin at both ends.
+
+        `extra_lead_seconds` covers anything prepended to the played asset — the
+        sync marker in particular. Leaving it out would spend the tail margin on
+        the marker and clip the end of the clip, which is the truncation the
+        marker exists to detect.
+        """
+        extra_lead_seconds = max(float(extra_lead_seconds), 0.0)
         seconds = max(float(self.run_seconds or 0), float(minimum_seconds))
         if self.playback_duration_seconds is not None:
             seconds = max(
                 seconds,
-                self.playback_duration_seconds + self.playback_lead_in_seconds + self.playback_tail_seconds,
+                self.playback_duration_seconds
+                + self.playback_lead_in_seconds
+                + extra_lead_seconds
+                + self.playback_tail_seconds,
             )
         elif self.audio_path is not None:
             audio_duration = probe_audio_duration_seconds(self.audio_path)
@@ -133,13 +144,22 @@ class BenchmarkScenarioFixture:
                 available_duration = max(audio_duration - self.playback_start_seconds, 0.0)
                 seconds = max(
                     seconds,
-                    available_duration + self.playback_lead_in_seconds + self.playback_tail_seconds,
+                    available_duration
+                    + self.playback_lead_in_seconds
+                    + extra_lead_seconds
+                    + self.playback_tail_seconds,
                 )
         return seconds
 
-    def computed_display_seconds(self, *, minimum_seconds: float) -> float:
+    def computed_display_seconds(self, *, minimum_seconds: float, extra_lead_seconds: float = 0.0) -> float:
         seconds = max(float(self.display_seconds or 0), float(minimum_seconds))
-        return max(seconds, self.computed_run_seconds(minimum_seconds=minimum_seconds) + 2.0)
+        return max(
+            seconds,
+            self.computed_run_seconds(
+                minimum_seconds=minimum_seconds, extra_lead_seconds=extra_lead_seconds
+            )
+            + 2.0,
+        )
 
 
 def load_scenarios_from_manifests(manifest_paths: list[str], *, repo_root: Path) -> list[BenchmarkScenarioFixture]:

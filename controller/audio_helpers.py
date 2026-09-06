@@ -12,6 +12,7 @@ from pathlib import Path
 
 import numpy as np
 
+from .alignment import SyncMarkerSpec
 from .playback_degradations import PlaybackDegradationSpec, prepare_playback_asset
 
 
@@ -78,6 +79,7 @@ class AudioPlaybackResult:
     playback_duration_seconds: float | None
     expected_duration_seconds: float | None
     degradation: dict[str, object] | None
+    sync_marker: dict[str, object] | None
     return_code: int
 
     def as_dict(self) -> dict[str, object]:
@@ -95,6 +97,7 @@ class ScheduledAudioPlayback:
     playback_duration_seconds: float | None
     expected_duration_seconds: float | None
     degradation: dict[str, object] | None
+    sync_marker: dict[str, object] | None = None
     completion_task: asyncio.Task[AudioPlaybackResult] | None = field(default=None, repr=False, compare=False)
 
 
@@ -145,6 +148,8 @@ async def schedule_audio_playback(
     playback_start_seconds: float = 0.0,
     playback_duration_seconds: float | None = None,
     degradation: PlaybackDegradationSpec | None = None,
+    sync_marker: SyncMarkerSpec | None = None,
+    marker_id: int | None = None,
 ) -> ScheduledAudioPlayback:
     audio_path = Path(path).expanduser().resolve()
     if not audio_path.exists():
@@ -176,7 +181,13 @@ async def schedule_audio_playback(
     prepared_playback_start_seconds = playback_start_seconds
     prepared_playback_duration_seconds = playback_duration_seconds
     degradation_metadata = degradation.metadata() if degradation is not None else None
-    if degradation is not None and degradation.is_active:
+    marker_metadata: dict[str, object] | None = None
+    if sync_marker is not None:
+        # Recorded so a capture found later can be aligned without guessing the
+        # marker geometry that produced it.
+        marker_metadata = {"spec": sync_marker.as_dict(), "marker_id": marker_id}
+    needs_prepared_asset = (degradation is not None and degradation.is_active) or sync_marker is not None
+    if needs_prepared_asset:
         cache_root = Path(__file__).resolve().parents[1] / "reports" / "_prepared_playback"
         prepared_asset = await asyncio.to_thread(
             prepare_playback_asset,
@@ -184,7 +195,9 @@ async def schedule_audio_playback(
             cache_root=cache_root,
             playback_start_seconds=playback_start_seconds,
             playback_duration_seconds=playback_duration_seconds,
-            degradation=degradation,
+            degradation=degradation if degradation is not None else PlaybackDegradationSpec(),
+            sync_marker=sync_marker,
+            marker_id=marker_id,
         )
         prepared_audio_path = prepared_asset.prepared_path
         prepared_playback_start_seconds = 0.0
@@ -202,6 +215,7 @@ async def schedule_audio_playback(
             expected_duration_seconds=expected_duration_seconds,
             source_audio_path=audio_path,
             degradation=degradation_metadata,
+            sync_marker=marker_metadata,
         )
     )
     return ScheduledAudioPlayback(
@@ -214,6 +228,7 @@ async def schedule_audio_playback(
         playback_duration_seconds=prepared_playback_duration_seconds,
         expected_duration_seconds=expected_duration_seconds,
         degradation=degradation_metadata,
+        sync_marker=marker_metadata,
         completion_task=task,
     )
 
@@ -227,6 +242,7 @@ async def _play_audio_with_delay(
     expected_duration_seconds: float | None,
     source_audio_path: Path | None = None,
     degradation: dict[str, object] | None = None,
+    sync_marker: dict[str, object] | None = None,
 ) -> AudioPlaybackResult:
     if playback_delay_seconds > 0:
         await asyncio.sleep(playback_delay_seconds)
@@ -240,6 +256,7 @@ async def _play_audio_with_delay(
         expected_duration_seconds=expected_duration_seconds,
         source_audio_path=source_audio_path,
         degradation=degradation,
+        sync_marker=sync_marker,
     )
 
 
@@ -253,6 +270,7 @@ async def play_audio_file(
     expected_duration_seconds: float | None = None,
     source_audio_path: str | Path | None = None,
     degradation: dict[str, object] | None = None,
+    sync_marker: dict[str, object] | None = None,
 ) -> AudioPlaybackResult:
     audio_path = Path(path).expanduser().resolve()
     if not audio_path.exists():
@@ -298,6 +316,7 @@ async def play_audio_file(
             playback_duration_seconds=playback_duration_seconds,
             expected_duration_seconds=expected_duration_seconds,
             degradation=degradation,
+            sync_marker=sync_marker,
             return_code=return_code,
         )
 
@@ -318,6 +337,7 @@ async def play_audio_file(
             playback_duration_seconds=playback_duration_seconds,
             expected_duration_seconds=expected_duration_seconds,
             degradation=degradation,
+            sync_marker=sync_marker,
             return_code=0,
         )
 

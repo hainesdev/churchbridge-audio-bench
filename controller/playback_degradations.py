@@ -11,6 +11,8 @@ from typing import Any
 
 import numpy as np
 
+from .alignment import SyncMarkerSpec, prepend_marker
+
 
 NOISE_TYPES = ("white", "pink", "hvac", "crowd", "street", "babble")
 ECHO_PROFILES = ("light", "medium", "heavy")
@@ -162,12 +164,16 @@ def prepare_playback_asset(
     playback_start_seconds: float = 0.0,
     playback_duration_seconds: float | None = None,
     degradation: PlaybackDegradationSpec,
+    sync_marker: SyncMarkerSpec | None = None,
+    marker_id: int | None = None,
 ) -> PreparedPlaybackAsset:
     source_path = Path(source_audio_path).expanduser().resolve()
     if not source_path.exists():
         raise FileNotFoundError(f"Audio file does not exist: {source_path}")
-    if not degradation.is_active:
-        raise ValueError("prepare_playback_asset only supports active degradations.")
+    if not degradation.is_active and sync_marker is None:
+        raise ValueError(
+            "prepare_playback_asset requires an active degradation or a sync marker."
+        )
 
     ffmpeg = _ffmpeg_path()
     if not ffmpeg:
@@ -180,12 +186,21 @@ def prepare_playback_asset(
     cache_root.mkdir(parents=True, exist_ok=True)
     source_stat = source_path.stat()
     window_token = f"ss{playback_start_seconds:.3f}|dur{playback_duration_seconds if playback_duration_seconds is not None else 'full'}"
+    marker_token = (
+        f"|sync{sync_marker.total_seconds():.3f}x{sync_marker.id_bits}id{marker_id}"
+        if sync_marker is not None
+        else ""
+    )
+    window_token += marker_token
     source_fingerprint = hashlib.sha1(
         f"{source_path}|{source_stat.st_mtime_ns}|{source_stat.st_size}|{window_token}".encode("utf-8")
     ).hexdigest()[:12]
     source_slug = _safe_slug(source_path.stem)
     excerpt_path = cache_root / f"{source_slug}__{source_fingerprint}__clean_excerpt.wav"
-    rendered_path = cache_root / f"{source_slug}__{source_fingerprint}__{degradation.case_id()}.wav"
+    case_token = degradation.case_id() if degradation.is_active else "clean"
+    if sync_marker is not None:
+        case_token = f"{case_token}__synced"
+    rendered_path = cache_root / f"{source_slug}__{source_fingerprint}__{case_token}.wav"
 
     if rendered_path.exists():
         expected_duration = _probe_wav_duration(rendered_path)
@@ -203,8 +218,16 @@ def prepare_playback_asset(
         playback_duration_seconds=playback_duration_seconds,
     )
     samples, sample_rate = _read_pcm16_wav(excerpt_path)
-    degraded = apply_degradation(samples, sample_rate, degradation)
-    _write_pcm16_wav(rendered_path, degraded, sample_rate)
+    rendered = (
+        apply_degradation(samples, sample_rate, degradation)
+        if degradation.is_active
+        else samples
+    )
+    if sync_marker is not None:
+        # The marker goes on last so it is never itself degraded — it has to
+        # stay findable in the capture no matter what the condition does.
+        rendered = prepend_marker(rendered, sample_rate, sync_marker, marker_id)
+    _write_pcm16_wav(rendered_path, rendered, sample_rate)
     expected_duration = _probe_wav_duration(rendered_path)
     return PreparedPlaybackAsset(
         prepared_path=rendered_path,

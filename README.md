@@ -89,6 +89,15 @@ The primary benchmark is a live end-to-end acoustic test:
 - End-to-end live sessions are now producing backend WAV captures under `churchbridge-ai/tests/audio/captured/benchmarks/`.
 - The controller can now schedule local playback automatically from one or more scenario manifests, so one PC command can drive multiple room-audio clips across multiple iPhone pipeline variants.
 
+## Known Issues
+
+Measurement defects, and what a reader should not quote yet, are tracked in
+[docs/known-issues.md](docs/known-issues.md). The short version: playback and
+capture start at times nobody measured, which word error rate scores as words
+missed. An acoustic sync marker now goes out ahead of every clip to recover that
+offset; until it has been validated on hardware, no accuracy figure from this
+rig should be treated as settled.
+
 ## Live Verification Snapshot
 
 Latest verified benchmark session:
