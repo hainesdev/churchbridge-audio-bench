@@ -277,3 +277,27 @@ weights are fetched at runtime from
 [aufklarer/DeepFilterNet3-CoreML](https://huggingface.co/aufklarer/DeepFilterNet3-CoreML)
 (Apache-2.0) rather than redistributed here. See
 [THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md).
+
+## Acknowledgments
+
+The pipeline under test is **DeepFilterNet3** by Hendrik Schröter, Tobias
+Rosenkranz, Alberto N. Escalante-B., and Andreas Maier. The architecture and
+trained model are theirs; this harness reimplements the streaming signal chain
+in Swift in order to measure it on device.
+
+> Schröter, H., Rosenkranz, T., Escalante-B., A. N., and Maier, A.
+> "DeepFilterNet: Perceptually Motivated Real-Time Speech Enhancement."
+> INTERSPEECH, 2023.
+
+The model itself is
+[aufklarer's INT8 Core ML conversion](https://huggingface.co/aufklarer/DeepFilterNet3-CoreML),
+fetched at runtime rather than redistributed here.
+
+Two Swift projects shortened the road materially. The `.npz` auxiliary-data
+loading is derived from
+[soniqo/speech-swift](https://github.com/soniqo/speech-swift), and
+[Ghostkwebb/MetalVoice](https://github.com/Ghostkwebb/MetalVoice) was read as a
+streaming reference while this was being designed — no code was taken from it,
+but it saved a lot of guessing.
+
+Full license terms are in [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
