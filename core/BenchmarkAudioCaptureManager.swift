@@ -430,6 +430,10 @@ final class BenchmarkAudioCaptureManager: NSObject {
                 processedSourceSamples = samples
             }
 
+            // The DeepFilterNet3 path returns nothing while its lookahead queue
+            // primes, and AVAudioPCMBuffer traps on a zero frame capacity.
+            guard !processedSourceSamples.isEmpty else { return }
+
             guard let sourceBuffer = AVAudioPCMBuffer(
                 pcmFormat: sourceFormat,
                 frameCapacity: AVAudioFrameCount(processedSourceSamples.count)

@@ -196,6 +196,7 @@ def _build_dfn3_tuning_from_payload(payload: dict[str, Any], *, source: Path | N
         max_compensation_gain=_optional_float(payload, "max_compensation_gain", "maxCompensationGain"),
         post_gain_db=_optional_float(payload, "post_gain_db", "postGainDB"),
         peak_limit=_optional_float(payload, "peak_limit", "peakLimit"),
+        spectral_floor=_optional_float(payload, "spectral_floor", "spectralFloor"),
     )
 
 
@@ -216,6 +217,9 @@ def _apply_cli_dfn3_overrides(tuning: BenchmarkDFN3TuningConfig, args: argparse.
         ),
         post_gain_db=args.dfn3_post_gain_db if args.dfn3_post_gain_db is not None else tuning.post_gain_db,
         peak_limit=args.dfn3_peak_limit if args.dfn3_peak_limit is not None else tuning.peak_limit,
+        spectral_floor=(
+            args.dfn3_spectral_floor if args.dfn3_spectral_floor is not None else tuning.spectral_floor
+        ),
     )
 
 
@@ -255,6 +259,7 @@ def _resolved_dfn3_tunings(args: argparse.Namespace, *, repo_root: Path) -> list
             max_compensation_gain=args.dfn3_max_compensation_gain,
             post_gain_db=args.dfn3_post_gain_db,
             peak_limit=args.dfn3_peak_limit,
+            spectral_floor=args.dfn3_spectral_floor,
         )
         for profile in profiles
     ]
@@ -344,6 +349,7 @@ async def _run_session(args: argparse.Namespace) -> None:
                     tuning.max_compensation_gain,
                     tuning.post_gain_db,
                     tuning.peak_limit,
+                    tuning.spectral_floor,
                 )
             )
         ),
@@ -571,7 +577,7 @@ def _parse_args() -> argparse.Namespace:
         help=(
             "JSON file containing one or more named DFN3 tuning objects. "
             "Each entry can define label, profile, wet_mix, loudness_compensation, "
-            "max_compensation_gain, post_gain_db, and peak_limit."
+            "max_compensation_gain, post_gain_db, peak_limit, and spectral_floor."
         ),
     )
     parser.add_argument(
@@ -603,6 +609,15 @@ def _parse_args() -> argparse.Namespace:
         type=float,
         default=None,
         help="Override DFN3 peak limiter ceiling from 0.5 to 1.0 for all selected DFN3 tuning profiles.",
+    )
+    parser.add_argument(
+        "--dfn3-spectral-floor",
+        type=float,
+        default=None,
+        help=(
+            "Override the DFN3 per-bin spectral floor from 0.0 to 1.0 for all selected "
+            "DFN3 tuning profiles. 0 disables it, which is the default for every profile."
+        ),
     )
     parser.add_argument("--run-seconds", type=float, default=5.0, help="Requested capture duration per run on the iPhone app")
     parser.add_argument("--display-seconds", type=float, default=5.0, help="Seconds to collect display events per run")
