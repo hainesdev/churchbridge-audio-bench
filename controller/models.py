@@ -149,6 +149,7 @@ class BenchmarkDFN3TuningConfig:
     max_compensation_gain: float | None = None
     post_gain_db: float | None = None
     peak_limit: float | None = None
+    spectral_floor: float | None = None
 
     def controller_payload(self) -> dict[str, Any]:
         payload: dict[str, Any] = {"profile": self.profile}
@@ -164,6 +165,8 @@ class BenchmarkDFN3TuningConfig:
             payload["post_gain_db"] = self.post_gain_db
         if self.peak_limit is not None:
             payload["peak_limit"] = self.peak_limit
+        if self.spectral_floor is not None:
+            payload["spectral_floor"] = self.spectral_floor
         return payload
 
     def as_dict(self) -> dict[str, Any]:
@@ -184,6 +187,8 @@ class BenchmarkDFN3TuningConfig:
             parts.append(f"post{_slug_float(self.post_gain_db)}db")
         if self.peak_limit is not None:
             parts.append(f"peak{_slug_float(self.peak_limit)}")
+        if self.spectral_floor is not None:
+            parts.append(f"floor{_slug_float(self.spectral_floor)}")
         return "-".join(parts)
 
 

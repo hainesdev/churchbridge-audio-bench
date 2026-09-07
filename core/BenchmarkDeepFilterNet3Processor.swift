@@ -33,7 +33,35 @@ final class BenchmarkDeepFilterNet3Processor {
     private var analysisMemory: [Float] = []
     private var synthesisMemory: [Float] = []
     private var outputBuffer: [Float] = []
+    private var pendingFrames: [PendingFrame] = []
+    private var dryDelayBuffer: [Float] = []
     private var tuning: BenchmarkResolvedDFN3Tuning = .subtle
+
+    /// One analysis frame held while it waits for the future frames its deep
+    /// filter taps need. `specReal`/`specImag` are the untouched analysis
+    /// spectrum, which doubles as the tap source for neighbouring frames and as
+    /// the dry side of the spectral mix.
+    private struct PendingFrame {
+        var specReal: [Float]
+        var specImag: [Float]
+        var enhancedReal: [Float]
+        var enhancedImag: [Float]
+        var coefficients: [Float]
+    }
+
+    /// Number of past frames the deep filter reads behind its target frame.
+    private var deepFilterPadBefore: Int {
+        config.dfOrder - 1 - config.dfLookahead
+    }
+
+    /// Offset between the input timeline and the enhanced sample stream, caused
+    /// by priming `analysisMemory` with a frame's worth of overlap. The deep
+    /// filter queue adds delivery latency on top of this (`dfLookahead` frames
+    /// must arrive before a frame can be emitted) but does not shift the signal,
+    /// so this is the only delay the dry path has to match.
+    private var dryAlignmentDelaySamples: Int {
+        config.fftSize - config.hopSize
+    }
 
     private(set) var loadWarning: String?
 
@@ -72,6 +100,18 @@ final class BenchmarkDeepFilterNet3Processor {
         meanNormState = initialMeanNormState
         unitNormState = initialUnitNormState
         outputBuffer.removeAll(keepingCapacity: true)
+
+        // Prime the queue with silent history so the first real frame is emitted
+        // with true silence behind it rather than a clamped copy of itself.
+        let silentFrame = PendingFrame(
+            specReal: [Float](repeating: 0, count: config.freqBins),
+            specImag: [Float](repeating: 0, count: config.freqBins),
+            enhancedReal: [Float](repeating: 0, count: config.freqBins),
+            enhancedImag: [Float](repeating: 0, count: config.freqBins),
+            coefficients: [Float](repeating: 0, count: config.dfBins * config.dfOrder * 2)
+        )
+        pendingFrames = [PendingFrame](repeating: silentFrame, count: deepFilterPadBefore)
+        dryDelayBuffer = [Float](repeating: 0, count: dryAlignmentDelaySamples)
     }
 
     func process(_ samples: [Float], sampleRate: Int) -> [Float] {
@@ -83,142 +123,247 @@ final class BenchmarkDeepFilterNet3Processor {
         }
 
         do {
+            dryDelayBuffer.append(contentsOf: samples)
+
             let (specReal, specImag) = stft.forward(audio: samples, analysisMem: &analysisMemory)
             let numFrames = specReal.count / config.freqBins
-            guard numFrames > 0 else { return [] }
-
-            var erbFeatures = Self.computeERBFeatures(
-                real: specReal,
-                imag: specImag,
-                erbFilterbank: erbFilterbank,
-                freqBins: config.freqBins,
-                erbBands: config.erbBands,
-                numFrames: numFrames
-            )
-            Self.applyMeanNormalization(
-                &erbFeatures,
-                state: &meanNormState,
-                alpha: config.normAlpha,
-                erbBands: config.erbBands,
-                numFrames: numFrames
-            )
-
-            var specFeatureReal = [Float](repeating: 0, count: numFrames * config.dfBins)
-            var specFeatureImag = [Float](repeating: 0, count: numFrames * config.dfBins)
-            for frame in 0..<numFrames {
-                let specBase = frame * config.freqBins
-                let featureBase = frame * config.dfBins
-                for bin in 0..<config.dfBins {
-                    specFeatureReal[featureBase + bin] = specReal[specBase + bin]
-                    specFeatureImag[featureBase + bin] = specImag[specBase + bin]
-                }
+            if numFrames > 0 {
+                try enqueueFrames(
+                    specReal: specReal,
+                    specImag: specImag,
+                    numFrames: numFrames,
+                    network: network
+                )
             }
 
-            Self.applyUnitNormalization(
-                real: &specFeatureReal,
-                imag: &specFeatureImag,
-                state: &unitNormState,
-                alpha: config.normAlpha,
-                dfBins: config.dfBins,
-                numFrames: numFrames
-            )
-
-            let erbInput = try Self.makeERBInput(erbFeatures: erbFeatures, numFrames: numFrames, erbBands: config.erbBands)
-            let specInput = try Self.makeSpecInput(
-                specFeatureReal: specFeatureReal,
-                specFeatureImag: specFeatureImag,
-                numFrames: numFrames,
-                dfBins: config.dfBins
-            )
-            let prediction = try network.predict(featErb: erbInput, featSpec: specInput)
-
-            let erbMaskCount = numFrames * config.erbBands
-            var erbMask = [Float](repeating: 0, count: erbMaskCount)
-            Self.extractMultiArray(prediction.erbMask, into: &erbMask, count: erbMaskCount)
-
-            let coefficientCount = config.dfOrder * numFrames * config.dfBins * 2
-            var rawCoefficients = [Float](repeating: 0, count: coefficientCount)
-            Self.extractMultiArray(prediction.dfCoefs, into: &rawCoefficients, count: coefficientCount)
-
-            var reorderedCoefficients = [Float](repeating: 0, count: coefficientCount)
-            for frame in 0..<numFrames {
-                for bin in 0..<config.dfBins {
-                    for tap in 0..<config.dfOrder {
-                        let sourceIndex = ((tap * numFrames + frame) * config.dfBins + bin) * 2
-                        let destinationIndex = ((frame * config.dfBins + bin) * config.dfOrder + tap) * 2
-                        reorderedCoefficients[destinationIndex] = rawCoefficients[sourceIndex]
-                        reorderedCoefficients[destinationIndex + 1] = rawCoefficients[sourceIndex + 1]
-                    }
-                }
+            let ready = drainDeepFilterQueue()
+            if !ready.real.isEmpty {
+                let enhancedSamples = stft.inverse(
+                    real: ready.real,
+                    imag: ready.imag,
+                    synthesisMem: &synthesisMemory
+                )
+                outputBuffer.append(contentsOf: enhancedSamples)
             }
 
-            var enhancedReal = specReal
-            var enhancedImag = specImag
-            Self.applyERBMask(
-                specReal: &enhancedReal,
-                specImag: &enhancedImag,
-                erbMask: erbMask,
-                inverseERBFilterbank: inverseERBFilterbank,
-                erbBands: config.erbBands,
-                freqBins: config.freqBins,
-                numFrames: numFrames
-            )
-
-            let deepFiltered = Self.applyDeepFiltering(
-                specReal: specReal,
-                specImag: specImag,
-                coefficients: reorderedCoefficients,
-                dfBins: config.dfBins,
-                dfOrder: config.dfOrder,
-                dfLookahead: config.dfLookahead,
-                numFrames: numFrames,
-                freqBins: config.freqBins
-            )
-            for frame in 0..<numFrames {
-                let fullBase = frame * config.freqBins
-                let filteredBase = frame * config.dfBins
-                for bin in 0..<config.dfBins {
-                    enhancedReal[fullBase + bin] = deepFiltered.real[filteredBase + bin]
-                    enhancedImag[fullBase + bin] = deepFiltered.imag[filteredBase + bin]
-                }
-            }
-
-            let enhancedSamples = stft.inverse(
-                real: enhancedReal,
-                imag: enhancedImag,
-                synthesisMem: &synthesisMemory
-            )
-            outputBuffer.append(contentsOf: enhancedSamples)
-            let emittedCount = min(outputBuffer.count, samples.count)
+            // Both streams are consumed by the same count, and the dry stream is
+            // primed by exactly the analysis delay, so emission index k refers to
+            // the same input sample on both sides.
+            let emittedCount = min(outputBuffer.count, dryDelayBuffer.count)
             guard emittedCount > 0 else { return [] }
 
             let emitted = Array(outputBuffer.prefix(emittedCount))
             outputBuffer.removeFirst(emittedCount)
+            let dry = Array(dryDelayBuffer.prefix(emittedCount))
+            dryDelayBuffer.removeFirst(emittedCount)
             loadWarning = nil
-            return applyTuning(
-                drySamples: Array(samples.prefix(emittedCount)),
-                enhancedSamples: emitted
-            )
+            return applyLevelling(drySamples: dry, mixedSamples: emitted)
         } catch {
+            // The dry buffer already holds this call's samples and the analysis
+            // memory has consumed them, so re-prime rather than leaving the two
+            // streams out of step.
+            reset()
             loadWarning = "DeepFilterNet3 inference failed: \(error.localizedDescription)"
             return samples
         }
     }
 
-    private func applyTuning(drySamples: [Float], enhancedSamples: [Float]) -> [Float] {
-        let sampleCount = min(drySamples.count, enhancedSamples.count)
-        guard sampleCount > 0 else { return [] }
+    /// Runs the model over this call's analysis frames and queues them for deep
+    /// filtering. The frames are not filtered here: the taps for frame f reach
+    /// `dfLookahead` frames into the future, which have not been captured yet.
+    private func enqueueFrames(
+        specReal: [Float],
+        specImag: [Float],
+        numFrames: Int,
+        network: BenchmarkDeepFilterNet3Network
+    ) throws {
+        var erbFeatures = Self.computeERBFeatures(
+            real: specReal,
+            imag: specImag,
+            erbFilterbank: erbFilterbank,
+            freqBins: config.freqBins,
+            erbBands: config.erbBands,
+            numFrames: numFrames
+        )
+        Self.applyMeanNormalization(
+            &erbFeatures,
+            state: &meanNormState,
+            alpha: config.normAlpha,
+            erbBands: config.erbBands,
+            numFrames: numFrames
+        )
 
-        let dryMix = 1 - tuning.wetMix
-        let wetMix = tuning.wetMix
-        let postGain = Float(pow(10.0, Double(tuning.postGainDB) / 20.0))
-
-        var output = [Float](repeating: 0, count: sampleCount)
-        for index in 0..<sampleCount {
-            output[index] = (drySamples[index] * dryMix) + (enhancedSamples[index] * wetMix)
+        var specFeatureReal = [Float](repeating: 0, count: numFrames * config.dfBins)
+        var specFeatureImag = [Float](repeating: 0, count: numFrames * config.dfBins)
+        for frame in 0..<numFrames {
+            let specBase = frame * config.freqBins
+            let featureBase = frame * config.dfBins
+            for bin in 0..<config.dfBins {
+                specFeatureReal[featureBase + bin] = specReal[specBase + bin]
+                specFeatureImag[featureBase + bin] = specImag[specBase + bin]
+            }
         }
 
-        let dryRMS = Self.rootMeanSquare(drySamples)
+        Self.applyUnitNormalization(
+            real: &specFeatureReal,
+            imag: &specFeatureImag,
+            state: &unitNormState,
+            alpha: config.normAlpha,
+            dfBins: config.dfBins,
+            numFrames: numFrames
+        )
+
+        let erbInput = try Self.makeERBInput(erbFeatures: erbFeatures, numFrames: numFrames, erbBands: config.erbBands)
+        let specInput = try Self.makeSpecInput(
+            specFeatureReal: specFeatureReal,
+            specFeatureImag: specFeatureImag,
+            numFrames: numFrames,
+            dfBins: config.dfBins
+        )
+        let prediction = try network.predict(featErb: erbInput, featSpec: specInput)
+
+        let erbMaskCount = numFrames * config.erbBands
+        var erbMask = [Float](repeating: 0, count: erbMaskCount)
+        Self.extractMultiArray(prediction.erbMask, into: &erbMask, count: erbMaskCount)
+
+        let coefficientCount = config.dfOrder * numFrames * config.dfBins * 2
+        var rawCoefficients = [Float](repeating: 0, count: coefficientCount)
+        Self.extractMultiArray(prediction.dfCoefs, into: &rawCoefficients, count: coefficientCount)
+
+        var reorderedCoefficients = [Float](repeating: 0, count: coefficientCount)
+        for frame in 0..<numFrames {
+            for bin in 0..<config.dfBins {
+                for tap in 0..<config.dfOrder {
+                    let sourceIndex = ((tap * numFrames + frame) * config.dfBins + bin) * 2
+                    let destinationIndex = ((frame * config.dfBins + bin) * config.dfOrder + tap) * 2
+                    reorderedCoefficients[destinationIndex] = rawCoefficients[sourceIndex]
+                    reorderedCoefficients[destinationIndex + 1] = rawCoefficients[sourceIndex + 1]
+                }
+            }
+        }
+
+        var enhancedReal = specReal
+        var enhancedImag = specImag
+        Self.applyERBMask(
+            specReal: &enhancedReal,
+            specImag: &enhancedImag,
+            erbMask: erbMask,
+            inverseERBFilterbank: inverseERBFilterbank,
+            erbBands: config.erbBands,
+            freqBins: config.freqBins,
+            numFrames: numFrames
+        )
+
+        // Deep filtering is deferred: the taps for frame f span
+        // f - deepFilterPadBefore ... f + dfLookahead, so f cannot be
+        // filtered until the lookahead frames have actually arrived.
+        let coefficientStride = config.dfBins * config.dfOrder * 2
+        for frame in 0..<numFrames {
+            let specBase = frame * config.freqBins
+            let specRange = specBase..<(specBase + config.freqBins)
+            let coefficientBase = frame * coefficientStride
+            pendingFrames.append(
+                PendingFrame(
+                    specReal: Array(specReal[specRange]),
+                    specImag: Array(specImag[specRange]),
+                    enhancedReal: Array(enhancedReal[specRange]),
+                    enhancedImag: Array(enhancedImag[specRange]),
+                    coefficients: Array(
+                        reorderedCoefficients[coefficientBase..<(coefficientBase + coefficientStride)]
+                    )
+                )
+            )
+        }
+    }
+
+    /// Emits every queued frame whose deep-filter window is complete, oldest
+    /// first, as spectra ready for the ISTFT.
+    private func drainDeepFilterQueue() -> (real: [Float], imag: [Float]) {
+        var real: [Float] = []
+        var imag: [Float] = []
+
+        while pendingFrames.count >= config.dfOrder {
+            let window = Array(pendingFrames.prefix(config.dfOrder))
+            let target = window[deepFilterPadBefore]
+
+            let filtered = Self.deepFilterFrame(
+                window: window,
+                coefficients: target.coefficients,
+                dfBins: config.dfBins,
+                dfOrder: config.dfOrder
+            )
+
+            var enhancedReal = target.enhancedReal
+            var enhancedImag = target.enhancedImag
+            for bin in 0..<config.dfBins {
+                enhancedReal[bin] = filtered.real[bin]
+                enhancedImag[bin] = filtered.imag[bin]
+            }
+
+            applySpectralFloor(real: &enhancedReal, imag: &enhancedImag, reference: target)
+            blendWithAnalysisSpectrum(real: &enhancedReal, imag: &enhancedImag, reference: target)
+
+            real.append(contentsOf: enhancedReal)
+            imag.append(contentsOf: enhancedImag)
+            pendingFrames.removeFirst()
+        }
+
+        return (real, imag)
+    }
+
+    /// Clamps how far the enhanced magnitude may fall below the analysis
+    /// magnitude in a bin, keeping the enhanced phase. Disabled at 0, which is
+    /// the default for every profile -- this exists so it can be swept against
+    /// the uniform wet/dry mix, not to move any current baseline.
+    private func applySpectralFloor(real: inout [Float], imag: inout [Float], reference: PendingFrame) {
+        let floor = tuning.spectralFloor
+        guard floor > 0 else { return }
+
+        for bin in 0..<real.count {
+            let referenceMagnitude = hypot(reference.specReal[bin], reference.specImag[bin])
+            let floorMagnitude = referenceMagnitude * floor
+            let enhancedMagnitude = hypot(real[bin], imag[bin])
+            guard enhancedMagnitude < floorMagnitude else { continue }
+
+            if enhancedMagnitude > 0 {
+                let gain = floorMagnitude / enhancedMagnitude
+                real[bin] *= gain
+                imag[bin] *= gain
+            } else {
+                // Bin was gated to exactly zero, so there is no phase to keep.
+                real[bin] = reference.specReal[bin] * floor
+                imag[bin] = reference.specImag[bin] * floor
+            }
+        }
+    }
+
+    /// Mixes the enhanced and analysis spectra of the *same* frame. Both sides
+    /// come from one STFT frame, so the mix is sample-aligned by construction,
+    /// and the weights are real, so it applies no phase shift. This replaces the
+    /// old time-domain mix, which paired dry at t with wet at
+    /// t - (fftSize - hopSize) and comb filtered the result.
+    private func blendWithAnalysisSpectrum(real: inout [Float], imag: inout [Float], reference: PendingFrame) {
+        let wetMix = tuning.wetMix
+        guard wetMix < 1 else { return }
+        let dryMix = 1 - wetMix
+
+        for bin in 0..<real.count {
+            real[bin] = (reference.specReal[bin] * dryMix) + (real[bin] * wetMix)
+            imag[bin] = (reference.specImag[bin] * dryMix) + (imag[bin] * wetMix)
+        }
+    }
+    /// Level stage only. The wet/dry mix now happens in the spectral domain, so
+    /// `mixedSamples` arrives already blended; `drySamples` is the time-aligned
+    /// dry signal, kept purely as the loudness reference.
+    private func applyLevelling(drySamples: [Float], mixedSamples: [Float]) -> [Float] {
+        let sampleCount = min(drySamples.count, mixedSamples.count)
+        guard sampleCount > 0 else { return [] }
+
+        let postGain = Float(pow(10.0, Double(tuning.postGainDB) / 20.0))
+
+        var output = Array(mixedSamples.prefix(sampleCount))
+
+        let dryRMS = Self.rootMeanSquare(Array(drySamples.prefix(sampleCount)))
         let mixedRMS = Self.rootMeanSquare(output)
         if dryRMS > 0, mixedRMS > 0, tuning.loudnessCompensation > 0 {
             let targetGain = min(max(dryRMS / mixedRMS, 1), tuning.maxCompensationGain)
@@ -520,42 +665,36 @@ final class BenchmarkDeepFilterNet3Processor {
         }
     }
 
-    private static func applyDeepFiltering(
-        specReal: [Float],
-        specImag: [Float],
+    /// Deep filters one frame. `window` holds exactly `dfOrder` analysis frames,
+    /// oldest first, with the target frame at index `dfOrder - 1 - dfLookahead`,
+    /// so tap t reads window[t] and every tap has a real frame behind it. The old
+    /// version clamped taps to the current call's frame range, which at a 20 ms
+    /// callback meant the 5-tap filter only ever saw 2 distinct frames.
+    private static func deepFilterFrame(
+        window: [PendingFrame],
         coefficients: [Float],
         dfBins: Int,
-        dfOrder: Int,
-        dfLookahead: Int,
-        numFrames: Int,
-        freqBins: Int
+        dfOrder: Int
     ) -> (real: [Float], imag: [Float]) {
-        let padBefore = dfOrder - 1 - dfLookahead
-        var outputReal = [Float](repeating: 0, count: numFrames * dfBins)
-        var outputImag = [Float](repeating: 0, count: numFrames * dfBins)
+        var outputReal = [Float](repeating: 0, count: dfBins)
+        var outputImag = [Float](repeating: 0, count: dfBins)
 
-        for frame in 0..<numFrames {
-            for bin in 0..<dfBins {
-                var sumReal: Float = 0
-                var sumImaginary: Float = 0
-                for tap in 0..<dfOrder {
-                    let sourceFrame = max(0, min(numFrames - 1, frame + tap - padBefore))
-                    let sourceIndex = (sourceFrame * freqBins) + bin
-                    let coefficientIndex = ((frame * dfBins + bin) * dfOrder + tap) * 2
+        for bin in 0..<dfBins {
+            var sumReal: Float = 0
+            var sumImaginary: Float = 0
+            for tap in 0..<dfOrder {
+                let coefficientIndex = ((bin * dfOrder) + tap) * 2
+                let coefficientReal = coefficients[coefficientIndex]
+                let coefficientImaginary = coefficients[coefficientIndex + 1]
+                let inputReal = window[tap].specReal[bin]
+                let inputImaginary = window[tap].specImag[bin]
 
-                    let coefficientReal = coefficients[coefficientIndex]
-                    let coefficientImaginary = coefficients[coefficientIndex + 1]
-                    let inputReal = specReal[sourceIndex]
-                    let inputImaginary = specImag[sourceIndex]
-
-                    sumReal += (inputReal * coefficientReal) - (inputImaginary * coefficientImaginary)
-                    sumImaginary += (inputImaginary * coefficientReal) + (inputReal * coefficientImaginary)
-                }
-
-                let destinationIndex = (frame * dfBins) + bin
-                outputReal[destinationIndex] = sumReal
-                outputImag[destinationIndex] = sumImaginary
+                sumReal += (inputReal * coefficientReal) - (inputImaginary * coefficientImaginary)
+                sumImaginary += (inputImaginary * coefficientReal) + (inputReal * coefficientImaginary)
             }
+
+            outputReal[bin] = sumReal
+            outputImag[bin] = sumImaginary
         }
 
         return (outputReal, outputImag)
@@ -640,11 +779,13 @@ private final class BenchmarkDeepFilterNet3STFTProcessor {
     }
 
     func forward(audio: [Float], analysisMem: inout [Float]) -> (real: [Float], imag: [Float]) {
-        let overlapSize = fftSize - hopSize
         let buffer = analysisMem + audio
-        let numFrames = max(0, ((buffer.count - fftSize) / hopSize) + 1)
+        // Integer division truncates toward zero, so the old
+        // `((buffer.count - fftSize) / hopSize) + 1` returned 1 for any buffer
+        // shorter than a frame and the loop below then read past its end.
+        let numFrames = buffer.count >= fftSize ? ((buffer.count - fftSize) / hopSize) + 1 : 0
         guard numFrames > 0 else {
-            analysisMem = Array(buffer.suffix(overlapSize))
+            analysisMem = buffer
             return ([], [])
         }
 
@@ -670,13 +811,11 @@ private final class BenchmarkDeepFilterNet3STFTProcessor {
             }
         }
 
+        // Carry every unconsumed sample. Forcing this back to exactly
+        // fftSize - hopSize dropped input whenever the callback was not a
+        // multiple of the hop, and zero-padded the history when it was short.
         let consumed = numFrames * hopSize
         analysisMem = Array(buffer.suffix(buffer.count - consumed))
-        if analysisMem.count > overlapSize {
-            analysisMem = Array(analysisMem.suffix(overlapSize))
-        } else if analysisMem.count < overlapSize {
-            analysisMem = [Float](repeating: 0, count: overlapSize - analysisMem.count) + analysisMem
-        }
         return (real, imag)
     }
 

@@ -85,6 +85,12 @@ struct BenchmarkResolvedDFN3Tuning: Sendable {
     let maxCompensationGain: Float
     let postGainDB: Float
     let peakLimit: Float
+    /// Lower bound on the enhanced magnitude of a bin, as a fraction of that
+    /// bin's analysis magnitude, applied before the wet/dry mix. 0 disables it.
+    /// Unlike `wetMix`, which floors every bin by the same amount, this only
+    /// lifts bins the model tried to gate, so it does not cost suppression in
+    /// the bins the model got right. 0 in every profile until it is swept.
+    let spectralFloor: Float
 
     var displayName: String { profile.displayName }
 
@@ -94,7 +100,8 @@ struct BenchmarkResolvedDFN3Tuning: Sendable {
         loudnessCompensation: 0.85,
         maxCompensationGain: 2.5,
         postGainDB: 0,
-        peakLimit: 0.98
+        peakLimit: 0.98,
+        spectralFloor: 0
     )
 
     static let balanced = BenchmarkResolvedDFN3Tuning(
@@ -103,7 +110,8 @@ struct BenchmarkResolvedDFN3Tuning: Sendable {
         loudnessCompensation: 0.7,
         maxCompensationGain: 2.25,
         postGainDB: 0.5,
-        peakLimit: 0.98
+        peakLimit: 0.98,
+        spectralFloor: 0
     )
 
     static let full = BenchmarkResolvedDFN3Tuning(
@@ -112,7 +120,8 @@ struct BenchmarkResolvedDFN3Tuning: Sendable {
         loudnessCompensation: 0,
         maxCompensationGain: 1.0,
         postGainDB: 0,
-        peakLimit: 0.98
+        peakLimit: 0.98,
+        spectralFloor: 0
     )
 }
 
@@ -123,6 +132,7 @@ struct BenchmarkDFN3TuningConfig: Codable, Sendable {
     let maxCompensationGain: Float?
     let postGainDB: Float?
     let peakLimit: Float?
+    let spectralFloor: Float?
 
     enum CodingKeys: String, CodingKey {
         case profile
@@ -131,6 +141,7 @@ struct BenchmarkDFN3TuningConfig: Codable, Sendable {
         case maxCompensationGain = "max_compensation_gain"
         case postGainDB = "post_gain_db"
         case peakLimit = "peak_limit"
+        case spectralFloor = "spectral_floor"
     }
 
     var resolved: BenchmarkResolvedDFN3Tuning {
@@ -150,7 +161,8 @@ struct BenchmarkDFN3TuningConfig: Codable, Sendable {
             loudnessCompensation: min(max(loudnessCompensation ?? base.loudnessCompensation, 0), 1),
             maxCompensationGain: max(maxCompensationGain ?? base.maxCompensationGain, 1),
             postGainDB: postGainDB ?? base.postGainDB,
-            peakLimit: min(max(peakLimit ?? base.peakLimit, 0.5), 1)
+            peakLimit: min(max(peakLimit ?? base.peakLimit, 0.5), 1),
+            spectralFloor: min(max(spectralFloor ?? base.spectralFloor, 0), 1)
         )
     }
 
@@ -160,7 +172,8 @@ struct BenchmarkDFN3TuningConfig: Codable, Sendable {
         loudnessCompensation: nil,
         maxCompensationGain: nil,
         postGainDB: nil,
-        peakLimit: nil
+        peakLimit: nil,
+        spectralFloor: nil
     )
 }
 
